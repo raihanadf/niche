@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=niche
+GenericName=Dynamic Island
+Comment=A floating dynamic island for music, agents, clipboard and little system moments
+Exec=@NICHE_EXEC@
+Icon=niche-kde
+Categories=Utility;
+StartupNotify=false
+X-KDE-Wayland-Interfaces=org_kde_kwin_fake_input
