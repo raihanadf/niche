@@ -213,85 +213,42 @@ final class AgentMonitor {
     }
 
     nonisolated private static func ompSessions() -> [AgentSession] {
-        let rows = run("/bin/ps", ["-Ao", "pid=,ppid=,command="]).split(separator: "\n").compactMap { line -> (pid: String, ppid: String, resume: String?)? in
+        let rows = run("/bin/ps", ["-Ao", "pid=,ppid=,tty=,command="]).split(separator: "\n").compactMap { line -> (pid: String, ppid: String, tty: String)? in
             let parts = line.split(separator: " ")
-            guard parts.count >= 3, let omp = parts.dropFirst(2).firstIndex(where: { $0.hasSuffix("/bin/omp") }) else { return nil }
-            let args = parts[(omp + 1)...]
-            let resume = args.firstIndex(of: "--resume").flatMap { args.index(after: $0) < args.endIndex ? String(args[args.index(after: $0)]) : nil }
-            return (String(parts[0]), String(parts[1]), resume)
+            guard parts.count >= 4, parts.dropFirst(3).contains(where: { $0.hasSuffix("/bin/omp") }) else { return nil }
+            return (String(parts[0]), String(parts[1]), String(parts[2]))
         }
         let pids = Set(rows.map(\.pid))
-        let launchers = rows.filter { !pids.contains($0.ppid) }
-        guard !launchers.isEmpty else { return [] }
-
-        var resumed: [String: pid_t] = [:]
-        for launcher in launchers {
-            if let id = launcher.resume, let pid = pid_t(launcher.pid) { resumed[id] = pid }
-        }
-        var wanted: [String: [pid_t]] = [:]
-        let fresh = launchers.filter { $0.resume == nil }.map(\.pid)
-        let cwdOutput = fresh.isEmpty ? "" : run("/usr/sbin/lsof", ["-a", "-p", fresh.joined(separator: ","), "-d", "cwd", "-Fn"])
-        var current: pid_t?
-        for line in cwdOutput.split(separator: "\n") {
-            if line.hasPrefix("p") { current = pid_t(line.dropFirst()) }
-            if line.hasPrefix("n"), let pid = current {
-                wanted[URL(fileURLWithPath: String(line.dropFirst())).resolvingSymlinksInPath().path, default: []].append(pid)
-            }
-        }
-
-        let fm = FileManager.default
-        let root = fm.homeDirectoryForCurrentUser.appending(path: ".omp/agent/sessions")
-        guard let dirs = try? fm.contentsOfDirectory(at: root, includingPropertiesForKeys: nil) else { return [] }
+        let terminals = FileManager.default.homeDirectoryForCurrentUser.appending(path: ".omp/agent/terminal-sessions")
         var found: [AgentSession] = []
-        for dir in dirs {
-            guard let files = try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.contentModificationDateKey]) else { continue }
-            let newest = files.filter { $0.pathExtension == "jsonl" }
-                .compactMap { file in
-                    (try? file.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate).map { (file, $0) }
-                }
-                .sorted { $0.1 > $1.1 }
-                .prefix(4)
-            for (file, _) in newest {
-                guard let handle = try? FileHandle(forReadingFrom: file) else { continue }
-                let head = String(decoding: handle.readData(ofLength: 4096), as: UTF8.self)
-                try? handle.close()
+        for launcher in rows where !pids.contains(launcher.ppid) && launcher.tty.hasPrefix("ttys") {
+            guard let pid = pid_t(launcher.pid),
+                  let pointer = try? String(contentsOf: terminals.appending(path: launcher.tty), encoding: .utf8) else { continue }
+            let lines = pointer.split(separator: "\n")
+            guard lines.count >= 2 else { continue }
+            let file = URL(fileURLWithPath: String(lines[1]))
+            guard let handle = try? FileHandle(forReadingFrom: file) else { continue }
+            let head = String(decoding: handle.readData(ofLength: 4096), as: UTF8.self)
+            try? handle.close()
 
-                var title: String?
-                var cwd: String?
-                for line in head.split(separator: "\n").prefix(3) {
-                    guard let entry = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any] else { continue }
-                    if entry["type"] as? String == "title" { title = entry["title"] as? String }
-                    if entry["type"] as? String == "session" { cwd = entry["cwd"] as? String }
-                }
-                guard let cwd else { continue }
-                let real = URL(fileURLWithPath: cwd).resolvingSymlinksInPath().path
-                let resumedPID = resumed.first { file.lastPathComponent.contains($0.key) }?.value
-                guard resumedPID != nil || wanted[real]?.isEmpty == false else { continue }
+            let title = head.split(separator: "\n").prefix(3).lazy
+                .compactMap { try? JSONSerialization.jsonObject(with: Data($0.utf8)) as? [String: Any] }
+                .first { $0["type"] as? String == "title" }?["title"] as? String
 
-                var state: AgentSession.State? = .paused
-                for line in tailLines(of: file, bytes: 64 * 1024).reversed() {
-                    if line.contains("\"customType\":\"session_exit\"") { state = nil; break }
-                    if line.contains("\"customType\":\"tool_execution_start\"") { state = .working; break }
-                    guard line.hasPrefix("{\"type\":\"message\""),
-                          let entry = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any],
-                          let message = entry["message"] as? [String: Any],
-                          let role = message["role"] as? String else { continue }
-                    state = role == "assistant" && message["stopReason"] as? String != "toolUse" ? .paused : .working
-                    break
-                }
-                guard let state else { continue }
-                let pid: pid_t
-                if let resumedPID {
-                    pid = resumedPID
-                } else {
-                    guard var pids = wanted[real], let first = pids.first else { continue }
-                    pids.removeFirst()
-                    wanted[real] = pids
-                    pid = first
-                }
-                found.append(AgentSession(id: "omp-\(file.lastPathComponent)", kind: .omp, title: title, account: nil,
-                                          project: URL(fileURLWithPath: cwd).lastPathComponent, state: state, pid: pid))
+            var state: AgentSession.State? = .paused
+            for line in tailLines(of: file, bytes: 64 * 1024).reversed() {
+                if line.contains("\"customType\":\"session_exit\"") { state = nil; break }
+                if line.contains("\"customType\":\"tool_execution_start\"") { state = .working; break }
+                guard line.hasPrefix("{\"type\":\"message\""),
+                      let entry = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any],
+                      let message = entry["message"] as? [String: Any],
+                      let role = message["role"] as? String else { continue }
+                state = role == "assistant" && message["stopReason"] as? String != "toolUse" ? .paused : .working
+                break
             }
+            guard let state else { continue }
+            found.append(AgentSession(id: "omp-\(file.lastPathComponent)", kind: .omp, title: title, account: nil,
+                                      project: URL(fileURLWithPath: String(lines[0])).lastPathComponent, state: state, pid: pid))
         }
         return found.sorted { $0.id < $1.id }
     }
