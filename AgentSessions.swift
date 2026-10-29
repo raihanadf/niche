@@ -468,6 +468,7 @@ struct AgentClosedView: View {
                 .offset(y: LabState.closedOffset)
             }
         }
+        .frame(height: LabState.hardwareNotch.height)
         .animation(.spring(response: 0.4, dampingFraction: 0.85), value: live)
         .onAppear { lastSessions = monitor.sessions }
         .onChange(of: monitor.sessions) { _, sessions in

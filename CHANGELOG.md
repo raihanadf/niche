@@ -1,5 +1,9 @@
 # changelog
 
+## 0.6.9.7
+
+- the notch picture and agent marks in the closed notch sat at the top edge since the lyrics change. they're vertically centered again.
+
 ## 0.6.9.6
 
 - niche no longer crashes when the network drops while it looks up lyrics. the error message carried the song's web address, and a `%` in it was read as part of the log format. thanks @David4rr.
