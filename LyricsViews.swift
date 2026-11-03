@@ -112,3 +112,79 @@ private struct LyricRow: View {
         return [0.55, 0.42, 0.2, 0.08][min(distance, 3)]
     }
 }
+
+struct ClosedKaraokeLyricsView: View {
+    let player: MusicPlayer
+    let line: String
+    let twoRows: Bool
+
+    private static let glowShadow: NSShadow = {
+        let s = NSShadow()
+        s.shadowColor = NSColor.white.withAlphaComponent(0.85)
+        s.shadowBlurRadius = 3.5
+        s.shadowOffset = .zero
+        return s
+    }()
+
+    var body: some View {
+        if line == "♪" {
+            TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !player.isPlaying)) { context in
+                let t = context.date.timeIntervalSinceReferenceDate
+                let pulse = sin(t * 3.0)
+                let opacity = player.isPlaying ? 0.45 + 0.45 * (0.5 + 0.5 * pulse) : 0.60
+                let scale = player.isPlaying ? 0.94 + 0.08 * (0.5 + 0.5 * pulse) : 1.0
+
+                Text("♪")
+                    .font(.system(size: 11.5, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white.opacity(opacity))
+                    .scaleEffect(scale)
+            }
+        } else if let activeLine = player.lyrics.activeLine, !activeLine.words.isEmpty {
+            TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !player.isPlaying)) { _ in
+                let at = player.currentPosition + Lyrics.lead + player.lyrics.autoOffset
+                Text(attributedText(for: activeLine, at: at))
+                    .multilineTextAlignment(twoRows ? .leading : .center)
+                    .lineLimit(twoRows ? 2 : 1)
+                    .minimumScaleFactor(0.70)
+            }
+        } else {
+            Text(line)
+                .font(.system(size: 11.5, weight: .semibold, design: .rounded))
+                .foregroundStyle(.white)
+                .multilineTextAlignment(twoRows ? .leading : .center)
+                .lineLimit(twoRows ? 2 : 1)
+                .minimumScaleFactor(0.70)
+        }
+    }
+
+    private func attributedText(for line: LyricLine, at: Double) -> AttributedString {
+        let words = line.words
+        var attr = AttributedString()
+        let hasSpaces = line.text.contains(where: \.isWhitespace)
+        let normalFont = Font.system(size: 11.5, weight: .semibold, design: .rounded)
+        let activeFont = Font.system(size: 11.96, weight: .bold, design: .rounded)
+
+        for (i, word) in words.enumerated() {
+            if i > 0 && hasSpaces {
+                var space = AttributedString(" ")
+                space.font = normalFont
+                space.foregroundColor = NSColor.white.withAlphaComponent(0.32)
+                attr.append(space)
+            }
+            var part = AttributedString(word.text)
+            if at >= word.end {
+                part.foregroundColor = NSColor.white.withAlphaComponent(0.90)
+                part.font = normalFont
+            } else if at >= word.time {
+                part.foregroundColor = NSColor.white
+                part.font = activeFont
+                part.shadow = Self.glowShadow
+            } else {
+                part.foregroundColor = NSColor.white.withAlphaComponent(0.32)
+                part.font = normalFont
+            }
+            attr.append(part)
+        }
+        return attr
+    }
+}

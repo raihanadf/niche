@@ -35,7 +35,7 @@ final class LyricsAutoSync {
     private var currentTitle: String?
     private var activeLines: [LyricLine] = []
     private var hasSyncedLyrics = false
-
+    private var listeningStartPos: Double = 0
     private struct TimeAnchor: Sendable {
         let elapsed: Double
         let date: Date
@@ -89,12 +89,13 @@ final class LyricsAutoSync {
         guard case .listening = state else { return }
         guard hasSyncedLyrics, !activeLines.isEmpty else { return }
 
-        let pastCount = activeLines.prefix(3).filter { position >= $0.end }.count
-        let readyToAlign = (pastCount >= 2 && position >= 10.0) || position >= 16.0
+        let elapsed = max(0, position - listeningStartPos)
+        let pastCount = activeLines.filter { $0.time >= listeningStartPos && position >= $0.end }.count
+        let readyToAlign = (pastCount >= 2 && elapsed >= 8.0) || elapsed >= 16.0
 
         if readyToAlign {
             evaluateAlignment(at: position)
-        } else if position >= 25.0 {
+        } else if elapsed >= 25.0 || position >= 75.0 {
             deactivate(as: .timedOut)
         }
     }
@@ -102,7 +103,7 @@ final class LyricsAutoSync {
     private func checkStartListening() {
         guard case .idle = state, currentSongKey != nil, hasSyncedLyrics, !activeLines.isEmpty else { return }
         let currentPos = positionProvider?() ?? 0
-        guard currentPos <= 8.0 else {
+        guard currentPos <= 45.0 else {
             deactivate(as: .timedOut)
             return
         }
@@ -111,6 +112,7 @@ final class LyricsAutoSync {
 
     private func startListening() {
         state = .listening
+        listeningStartPos = positionProvider?() ?? 0
         lock.lock()
         isListening = true
         recordedSamples.removeAll(keepingCapacity: true)
@@ -139,14 +141,15 @@ final class LyricsAutoSync {
         let samples = recordedSamples
         lock.unlock()
 
+        let elapsed = max(0, position - listeningStartPos)
         guard samples.count >= 60 else {
-            if position >= 25.0 { deactivate(as: .timedOut) }
+            if elapsed >= 25.0 || position >= 75.0 { deactivate(as: .timedOut) }
             return
         }
 
         if let result = LyricsAligner.align(lines: activeLines, heardOnsets: samples) {
             applyCalibration(result.offset)
-        } else if position >= 25.0 {
+        } else if elapsed >= 25.0 || position >= 75.0 {
             deactivate(as: .timedOut)
         }
     }
@@ -178,5 +181,6 @@ final class LyricsAutoSync {
         currentTitle = nil
         activeLines = []
         hasSyncedLyrics = false
+        listeningStartPos = 0
     }
 }

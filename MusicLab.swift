@@ -30,6 +30,11 @@ final class MusicPlayer {
     private(set) var isShuffled = false
     private(set) var position: Double = 0
     private(set) var songChangeToken = 0
+    var currentPosition: Double {
+        guard let track, isPlaying else { return position }
+        let live = Date().timeIntervalSince(timestamp) * rate
+        return min(max(elapsedAtTimestamp + live, 0), track.duration)
+    }
     var allowsAnyApp: Bool {
         didSet {
             UserDefaults.standard.set(allowsAnyApp, forKey: "musicAnyApp")
@@ -203,10 +208,10 @@ final class MusicPlayer {
         lyricsTimer?.invalidate()
         lyricsTimer = nil
         guard follow else { return }
-        let timer = Timer(timeInterval: 0.1, repeats: true) { [weak self] _ in
+        let timer = Timer(timeInterval: 0.05, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self else { return }
-                self.lyrics.sync(self.elapsedAtTimestamp + Date().timeIntervalSince(self.timestamp) * self.rate)
+                self.lyrics.sync(self.currentPosition)
             }
         }
         RunLoop.main.add(timer, forMode: .common)
@@ -893,15 +898,10 @@ struct MusicClosedView: View {
         }
     }
 
-    private func lyric(_ text: String, twoRows: Bool) -> some View {
+    private func lyric(_ line: String, twoRows: Bool) -> some View {
         ZStack {
-            Text(text)
-                .font(.system(size: 11.5, weight: .semibold, design: .rounded))
-                .foregroundStyle(.white)
-                .multilineTextAlignment(twoRows ? .leading : .center)
-                .lineLimit(twoRows ? 2 : 1)
-                .minimumScaleFactor(0.7)
-                .id(text)
+            ClosedKaraokeLyricsView(player: player, line: line, twoRows: twoRows)
+                .id(line)
                 .transition(.blurReplace(.downUp))
         }
         .frame(maxWidth: .infinity, alignment: twoRows ? .leading : .center)

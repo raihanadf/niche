@@ -16,7 +16,7 @@ final class Lyrics {
     @ObservationIgnored private var task: Task<Void, Never>?
     @ObservationIgnored private var measured = (text: "", width: CGFloat(0))
 
-    static let lead = 0.3
+    static let lead = 0.42
     private static let resize = Animation.spring(response: 0.45, dampingFraction: 0.95)
     static let closedFont = NSFont(descriptor: NSFont.systemFont(ofSize: 11.5, weight: .semibold).fontDescriptor.withDesign(.rounded)!, size: 11.5)!
 
@@ -25,6 +25,12 @@ final class Lyrics {
         guard synced else { return lines[0].text }
         guard let index, isSinging, !lines[index].text.isEmpty else { return "♪" }
         return lines[index].text
+    }
+
+    var activeLine: LyricLine? {
+        guard case .loaded(let lines, let synced) = state, synced else { return nil }
+        guard let index, isSinging, index < lines.count, !lines[index].text.isEmpty else { return nil }
+        return lines[index]
     }
 
     var lineWidth: CGFloat {
