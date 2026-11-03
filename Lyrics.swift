@@ -15,7 +15,7 @@ final class Lyrics {
     @ObservationIgnored private var task: Task<Void, Never>?
     @ObservationIgnored private var measured = (text: "", width: CGFloat(0))
 
-    static let lead = 0.18
+    static let lead = 0.38
     private static let resize = Animation.spring(response: 0.45, dampingFraction: 0.95)
     static let closedFont = NSFont(descriptor: NSFont.systemFont(ofSize: 11.5, weight: .semibold).fontDescriptor.withDesign(.rounded)!, size: 11.5)!
 

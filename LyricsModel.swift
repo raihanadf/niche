@@ -44,8 +44,9 @@ enum LyricsParser {
         return stamps.indices.map { i in
             let (time, text) = stamps[i]
             let next = i + 1 < stamps.count ? stamps[i + 1].time : time + 6.0
-            let sung = max(2.0, Double(text.split(separator: " ").count) * 0.45 + 1.2)
-            let end = max(next - time > sung + 2.0 ? time + sung : next, time + 1.0)
+            let words = Double(max(1, text.split(separator: " ").count))
+            let guess = max(1.4, min(7.0, words * 0.36 + 0.6))
+            let end = max(time + 0.8, min(next - 0.1, time + guess))
             return LyricLine(id: i, time: time, end: end, text: text)
         }
     }

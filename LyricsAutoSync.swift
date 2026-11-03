@@ -35,8 +35,10 @@ final class LyricsAutoSync {
         currentKey = key
 
         if UserDefaults.standard.object(forKey: key) != nil {
-            lyrics?.setOffset(UserDefaults.standard.double(forKey: key))
+            let cached = UserDefaults.standard.double(forKey: key)
+            lyrics?.setOffset(cached)
             isCalibrated = true
+            NSLog("[LyricsAutoSync] Loaded cached offset %.3fs for %@", cached, key)
         } else {
             isCalibrated = false
             analyzer = VocalActivityAnalyzer()
@@ -78,17 +80,27 @@ final class LyricsAutoSync {
         if case .loaded(let lines, true) = lyrics?.state { existingLines = lines }
 
         alignTask = Task.detached { [weak self] in
-            guard let vocals = analyzer.finish() else { return }
+            guard let vocals = analyzer.finish() else {
+                NSLog("[LyricsAutoSync] Insufficient vocal frames for %@", key)
+                return
+            }
             var lines = existingLines
             if lines == nil {
                 let fetched = await LyricsService.shared.fetch(title: track.title, artist: track.artist, duration: track.duration)
                 if case .loaded(let l, true) = fetched { lines = l }
             }
-            guard !Task.isCancelled, let lines,
-                  let alignment = LyricsAligner.align(lines: lines, vocals: vocals),
-                  alignment.confidence >= Self.minConfidence else { return }
-
+            guard !Task.isCancelled, let lines else { return }
+            guard let alignment = LyricsAligner.align(lines: lines, vocals: vocals) else {
+                NSLog("[LyricsAutoSync] Sharpness guard rejected alignment for %@", key)
+                return
+            }
+            guard alignment.confidence >= Self.minConfidence else {
+                NSLog("[LyricsAutoSync] Low confidence %.2f < %.2f for %@", alignment.confidence, Self.minConfidence, key)
+                return
+            }
             let offsetSec = Double(alignment.offsetMs) / 1000.0
+            NSLog("[LyricsAutoSync] Aligned %@: offset=%.3fs (confidence=%.2f, strong=%d/%d)",
+                  key, offsetSec, alignment.confidence, alignment.strongLines, alignment.totalLines)
             UserDefaults.standard.set(offsetSec, forKey: key)
             await self?.applyAlignment(offsetSec: offsetSec, key: key)
         }
