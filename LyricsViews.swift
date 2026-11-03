@@ -138,7 +138,7 @@ struct ClosedKaraokeLyricsView: View {
             }
         } else if let activeLine = player.lyrics.activeLine, activeLine.text == line {
             TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !player.isPlaying)) { _ in
-                let pos = player.currentPosition + Lyrics.lead
+                let pos = player.currentPosition + Lyrics.lead + player.lyrics.offset
                 let duration = max(0.5, activeLine.end - activeLine.time)
                 let progress = min(1.0, max(0.0, (pos - activeLine.time) / duration))
                 Text(sweptText(line: line, progress: progress))

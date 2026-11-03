@@ -9,6 +9,7 @@ final class Lyrics {
     private(set) var state = State.idle
     private(set) var index: Int?
     private(set) var isSinging = true
+    private(set) var offset: Double = 0.0
     @ObservationIgnored private var key = ""
     @ObservationIgnored private var cache: [String: State] = [:]
     @ObservationIgnored private var task: Task<Void, Never>?
@@ -39,10 +40,13 @@ final class Lyrics {
         return measured.width
     }
 
+    func setOffset(_ val: Double) { offset = val }
+
     func load(_ track: Track?) {
         guard let track else {
             task?.cancel()
             key = ""
+            offset = 0.0
             withAnimation(Self.resize) {
                 state = .idle
                 index = nil
@@ -52,6 +56,7 @@ final class Lyrics {
         let key = "\(track.artist)|\(track.title)".lowercased()
         guard key != self.key else { return }
         self.key = key
+        self.offset = 0.0
         task?.cancel()
         withAnimation(Self.resize) {
             index = nil
@@ -75,7 +80,7 @@ final class Lyrics {
 
     func sync(_ position: Double) {
         guard case .loaded(let lines, synced: true) = state else { return }
-        let at = position + Self.lead
+        let at = position + Self.lead + offset
         let next = lines.lastIndex { $0.time <= at }
         let singing = next.map { at <= lines[$0].end } ?? true
         guard next != index || singing != isSinging else { return }
