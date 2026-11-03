@@ -39,6 +39,7 @@ final class MusicPlayer {
     let spectrum = AudioSpectrum()
     let output = OutputDevice()
     let lyrics = Lyrics()
+    let autoSync = LyricsAutoSync()
     var allowsLyrics: Bool {
         didSet {
             UserDefaults.standard.set(allowsLyrics, forKey: "musicLyrics")
@@ -79,6 +80,18 @@ final class MusicPlayer {
         self.setElapsed = unsafeBitCast(setElapsed, to: (@convention(c) (Double) -> Void).self)
         self.setShuffle = unsafeBitCast(setShuffle, to: (@convention(c) (Int) -> Void).self)
         output.onDeviceChange = { [weak self] in self?.spectrum.refresh() }
+        lyrics.onLoaded = { [weak self] lines, synced in
+            self?.autoSync.lyricsLoaded(lines, synced: synced)
+        }
+        autoSync.bind(
+            position: { [weak self] in self?.position ?? 0 },
+            spectrum: spectrum,
+            onCalibrated: { [weak self] offset in
+                guard let self else { return }
+                self.lyrics.autoOffset = offset
+                self.lyrics.sync(self.position)
+            }
+        )
     }
 
     func start() {
@@ -111,6 +124,7 @@ final class MusicPlayer {
         process?.terminationHandler = nil
         process?.terminate()
         spectrum.stop()
+        autoSync.reset()
     }
 
     private func apply(_ snapshot: NowPlayingSnapshot) {
@@ -126,6 +140,7 @@ final class MusicPlayer {
                 self.track = nil
                 self.isPlaying = false
                 self.spectrum.follow(pid: nil)
+                self.autoSync.reset()
             }
             return
         }
@@ -143,7 +158,7 @@ final class MusicPlayer {
         isPlaying = snapshot.isPlaying
         if let shuffle = snapshot.shuffleMode { isShuffled = shuffle != 1 }
         spectrum.follow(pid: snapshot.isPlaying ? snapshot.pid : nil)
-
+        autoSync.updateTimeAnchor(elapsed: elapsedAtTimestamp, date: timestamp, rate: rate, isPlaying: isPlaying)
         if isNewSong && isShowingLyrics { lyrics.load(next) }
         if isNewSong && next.artwork == nil {
             if pendingSong.map({ !$0.isSameSong(as: next) }) ?? true {
@@ -168,6 +183,7 @@ final class MusicPlayer {
         }
         lastSong = next
         track = next
+        autoSync.songChanged(artist: next.artist, title: next.title)
         tick()
     }
 
@@ -177,6 +193,7 @@ final class MusicPlayer {
         let next = min(max(elapsedAtTimestamp + live, 0), track.duration)
         if next != position { position = next }
         if isShowingLyrics { lyrics.sync(position) }
+        autoSync.tick(position: next)
     }
 
     private func followLyrics() {

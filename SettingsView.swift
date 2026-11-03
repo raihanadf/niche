@@ -165,7 +165,7 @@ struct SettingsView: View {
             Section {
                 Toggle("Lyrics", isOn: Binding(get: { player.allowsLyrics }, set: { player.allowsLyrics = $0 }))
             } footer: {
-                Text("Adds a lyrics button to the player. Lyrics come from lrclib.net, which only sees the songs you open lyrics for.")
+                Text("Adds a lyrics button to the player. Synchronized lyrics are fetched on demand for songs you open lyrics for.")
             }
         }
     }
