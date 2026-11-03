@@ -886,12 +886,7 @@ struct MusicClosedView: View {
 
     private func lyric(_ line: String, twoRows: Bool) -> some View {
         ZStack {
-            Text(line)
-                .font(.system(size: 11.5, weight: .semibold, design: .rounded))
-                .foregroundStyle(.white)
-                .multilineTextAlignment(twoRows ? .leading : .center)
-                .lineLimit(twoRows ? 2 : 1)
-                .minimumScaleFactor(0.70)
+            ClosedKaraokeLyricsView(player: player, line: line, twoRows: twoRows)
                 .id(line)
                 .transition(.blurReplace(.downUp))
         }

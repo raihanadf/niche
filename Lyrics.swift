@@ -25,6 +25,12 @@ final class Lyrics {
         return lines[index].text
     }
 
+    var activeLine: LyricLine? {
+        guard case .loaded(let lines, true) = state,
+              let index, isSinging, index < lines.count else { return nil }
+        return lines[index]
+    }
+
     var lineWidth: CGFloat {
         let text = line
         if text != measured.text {

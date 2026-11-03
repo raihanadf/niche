@@ -112,3 +112,67 @@ private struct LyricRow: View {
         return [0.55, 0.42, 0.2, 0.08][min(distance, 3)]
     }
 }
+
+struct ClosedKaraokeLyricsView: View {
+    let player: MusicPlayer
+    let line: String
+    let twoRows: Bool
+
+    var body: some View {
+        content
+            .font(.system(size: 11.5, weight: .semibold, design: .rounded))
+            .multilineTextAlignment(twoRows ? .leading : .center)
+            .lineLimit(twoRows ? 2 : 1)
+            .minimumScaleFactor(0.70)
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        if line == "♪" {
+            TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !player.isPlaying)) { context in
+                let time = context.date.timeIntervalSinceReferenceDate
+                let pulse = 0.40 + 0.45 * (sin(time * 3.0) * 0.5 + 0.5)
+                let opacity = player.isPlaying ? pulse : 0.55
+                Text("♪")
+                    .foregroundStyle(.white.opacity(opacity))
+            }
+        } else if let activeLine = player.lyrics.activeLine, activeLine.text == line {
+            TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !player.isPlaying)) { _ in
+                let pos = player.currentPosition + Lyrics.lead
+                let duration = max(0.5, activeLine.end - activeLine.time)
+                let progress = min(1.0, max(0.0, (pos - activeLine.time) / duration))
+                Text(sweptText(line: line, progress: progress))
+            }
+        } else {
+            Text(line)
+                .foregroundStyle(.white)
+        }
+    }
+
+    private func sweptText(line: String, progress: Double) -> AttributedString {
+        var str = AttributedString(line)
+        let indices = Array(str.characters.indices)
+        let count = indices.count
+        guard count > 0 else { return str }
+
+        let cursor = progress * Double(count)
+        let radius = 2.5
+
+        for i in 0..<count {
+            let start = indices[i]
+            let end = str.characters.index(after: start)
+            let dist = Double(i) - cursor
+            let color: NSColor
+            if dist <= -radius {
+                color = .white
+            } else if dist >= radius {
+                color = NSColor.white.withAlphaComponent(0.30)
+            } else {
+                let t = (dist + radius) / (2.0 * radius)
+                color = NSColor.white.withAlphaComponent(1.0 - t * 0.70)
+            }
+            str[start..<end].foregroundColor = color
+        }
+        return str
+    }
+}
