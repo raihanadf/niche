@@ -44,7 +44,6 @@ final class MusicPlayer {
     let spectrum = AudioSpectrum()
     let output = OutputDevice()
     let lyrics = Lyrics()
-    let autoSync = LyricsAutoSync()
     var allowsLyrics: Bool {
         didSet {
             UserDefaults.standard.set(allowsLyrics, forKey: "musicLyrics")
@@ -75,6 +74,10 @@ final class MusicPlayer {
         UserDefaults.standard.register(defaults: ["musicAnyApp": false, "musicLyrics": true])
         allowsAnyApp = UserDefaults.standard.bool(forKey: "musicAnyApp")
         allowsLyrics = UserDefaults.standard.bool(forKey: "musicLyrics")
+        let defaults = UserDefaults.standard
+        for key in defaults.dictionaryRepresentation().keys where key.hasPrefix("lyrics_offset_") {
+            defaults.removeObject(forKey: key)
+        }
         guard let handle = dlopen("/System/Library/PrivateFrameworks/MediaRemote.framework/MediaRemote", RTLD_NOW),
               let send = dlsym(handle, "MRMediaRemoteSendCommand"),
               let setElapsed = dlsym(handle, "MRMediaRemoteSetElapsedTime"),
@@ -85,18 +88,6 @@ final class MusicPlayer {
         self.setElapsed = unsafeBitCast(setElapsed, to: (@convention(c) (Double) -> Void).self)
         self.setShuffle = unsafeBitCast(setShuffle, to: (@convention(c) (Int) -> Void).self)
         output.onDeviceChange = { [weak self] in self?.spectrum.refresh() }
-        lyrics.onLoaded = { [weak self] lines, synced in
-            self?.autoSync.lyricsLoaded(lines, synced: synced)
-        }
-        autoSync.bind(
-            position: { [weak self] in self?.position ?? 0 },
-            spectrum: spectrum,
-            onCalibrated: { [weak self] offset in
-                guard let self else { return }
-                self.lyrics.autoOffset = offset
-                self.lyrics.sync(self.position)
-            }
-        )
     }
 
     func start() {
@@ -129,7 +120,6 @@ final class MusicPlayer {
         process?.terminationHandler = nil
         process?.terminate()
         spectrum.stop()
-        autoSync.reset()
     }
 
     private func apply(_ snapshot: NowPlayingSnapshot) {
@@ -145,7 +135,6 @@ final class MusicPlayer {
                 self.track = nil
                 self.isPlaying = false
                 self.spectrum.follow(pid: nil)
-                self.autoSync.reset()
             }
             return
         }
@@ -163,7 +152,6 @@ final class MusicPlayer {
         isPlaying = snapshot.isPlaying
         if let shuffle = snapshot.shuffleMode { isShuffled = shuffle != 1 }
         spectrum.follow(pid: snapshot.isPlaying ? snapshot.pid : nil)
-        autoSync.updateTimeAnchor(elapsed: elapsedAtTimestamp, date: timestamp, rate: rate, isPlaying: isPlaying)
         if isNewSong && isShowingLyrics { lyrics.load(next) }
         if isNewSong && next.artwork == nil {
             if pendingSong.map({ !$0.isSameSong(as: next) }) ?? true {
@@ -188,7 +176,6 @@ final class MusicPlayer {
         }
         lastSong = next
         track = next
-        autoSync.songChanged(artist: next.artist, title: next.title)
         tick()
     }
 
@@ -198,7 +185,6 @@ final class MusicPlayer {
         let next = min(max(elapsedAtTimestamp + live, 0), track.duration)
         if next != position { position = next }
         if isShowingLyrics { lyrics.sync(position) }
-        autoSync.tick(position: next)
     }
 
     private func followLyrics() {
@@ -900,7 +886,12 @@ struct MusicClosedView: View {
 
     private func lyric(_ line: String, twoRows: Bool) -> some View {
         ZStack {
-            ClosedKaraokeLyricsView(player: player, line: line, twoRows: twoRows)
+            Text(line)
+                .font(.system(size: 11.5, weight: .semibold, design: .rounded))
+                .foregroundStyle(.white)
+                .multilineTextAlignment(twoRows ? .leading : .center)
+                .lineLimit(twoRows ? 2 : 1)
+                .minimumScaleFactor(0.70)
                 .id(line)
                 .transition(.blurReplace(.downUp))
         }

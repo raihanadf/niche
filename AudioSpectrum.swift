@@ -15,27 +15,16 @@ final class AudioSpectrum {
     var isEnabled = false {
         didSet {
             guard isEnabled != oldValue else { return }
-            updateActiveState()
+            let wanted = requestedPID
+            stop()
+            if isEnabled { follow(pid: wanted) }
         }
-    }
-    @ObservationIgnored var isVocalSyncActive = false {
-        didSet {
-            guard isVocalSyncActive != oldValue else { return }
-            updateActiveState()
-        }
-    }
-    @ObservationIgnored nonisolated(unsafe) var onVocalSample: (@Sendable (Float) -> Void)?
-    private var isTapActive: Bool { isEnabled || isVocalSyncActive }
-    private func updateActiveState() {
-        let wanted = requestedPID
-        stop()
-        if isTapActive { follow(pid: wanted) }
     }
     @ObservationIgnored private let session = TapSession()
 
     func follow(pid: pid_t?) {
         requestedPID = pid ?? 0
-        let target = isTapActive ? requestedPID : 0
+        let target = isEnabled ? requestedPID : 0
         guard target != self.pid else { return }
         self.pid = target
         levels = [Float](repeating: 0, count: Self.bands)
@@ -43,14 +32,12 @@ final class AudioSpectrum {
             session.stop()
             guard target > 0 else { return }
             do {
-                try session.start(pid: target, onLevels: { [weak self] levels in
+                try session.start(pid: target) { [weak self] levels in
                     Task { @MainActor in
                         guard let self, self.pid == target, self.isEnabled, zip(self.levels, levels).contains(where: { abs($0 - $1) >= 0.008 }) else { return }
                         self.levels = levels
                     }
-                }, onVocal: { [weak self] sample in
-                    self?.onVocalSample?(sample)
-                })
+                }
             } catch {
                 NSLog("Niche audio tap failed for pid %d: %@", target, String(describing: error))
                 session.stop()
@@ -59,9 +46,10 @@ final class AudioSpectrum {
     }
 
     func refresh() {
-        guard requestedPID > 0 else { return }
+        let target = requestedPID
+        guard target > 0 else { return }
         pid = 0
-        follow(pid: requestedPID)
+        follow(pid: target)
     }
 
     func stop() {
@@ -92,7 +80,7 @@ private final class TapSession: @unchecked Sendable {
         procID = nil
     }
 
-    func start(pid: pid_t, onLevels: @escaping @Sendable ([Float]) -> Void, onVocal: (@Sendable (Float) -> Void)? = nil) throws {
+    func start(pid: pid_t, onLevels: @escaping @Sendable ([Float]) -> Void) throws {
         let process = try Self.read(AudioObjectID(kAudioObjectSystemObject), kAudioHardwarePropertyTranslatePIDToProcessObject,
                                     qualifier: pid, as: AudioObjectID.self)
         guard process != kAudioObjectUnknown else { throw TapError.noAudioProcess }
@@ -129,7 +117,7 @@ private final class TapSession: @unchecked Sendable {
             guard let first = buffers.first, let data = first.mData else { return }
             let samples = UnsafeBufferPointer(start: data.assumingMemoryBound(to: Float.self),
                                               count: Int(first.mDataByteSize) / MemoryLayout<Float>.size)
-            guard let levels = analyzer.process(samples, channels: interleavedChannels, onVocal: onVocal) else { return }
+            guard let levels = analyzer.process(samples, channels: interleavedChannels) else { return }
             onLevels(levels)
         }, "create IO proc")
         try check(AudioDeviceStart(aggregateID, procID), "start aggregate device")
@@ -173,9 +161,6 @@ private final class SpectrumAnalyzer: @unchecked Sendable {
     private var floor: [Float]
     private var average: [Float]
     private var lastPublish: CFTimeInterval = 0
-    private let vocalRange: Range<Int>
-    private var prevVocalDb: Float = -60
-    private var vocalAvg: Float = -45
 
     init(bands: Int, sampleRate: Float) {
         guard let setup = vDSP_create_fftsetup(10, FFTRadix(kFFTRadix2)) else { fatalError("vDSP FFT setup failed") }
@@ -183,9 +168,6 @@ private final class SpectrumAnalyzer: @unchecked Sendable {
         window = vDSP.window(ofType: Float.self, usingSequence: .hanningDenormalized, count: 1024, isHalfWindow: false)
         let binHz = sampleRate / 1024
         edges = [Float(30), 150, 600, 2_500, 12_000].map { min(511, max(1, Int(($0 / binHz).rounded()))) }
-        let vStart = min(511, max(1, Int((250.0 / binHz).rounded())))
-        let vEnd = min(511, max(vStart + 1, Int((4000.0 / binHz).rounded())))
-        vocalRange = vStart..<vEnd
         smoothed = [Float](repeating: 0, count: bands)
         ceiling = [Float](repeating: -30, count: bands)
         floor = [Float](repeating: -60, count: bands)
@@ -194,7 +176,7 @@ private final class SpectrumAnalyzer: @unchecked Sendable {
 
     deinit { vDSP_destroy_fftsetup(setup) }
 
-    func process(_ samples: UnsafeBufferPointer<Float>, channels: Int, onVocal: ((Float) -> Void)? = nil) -> [Float]? {
+    func process(_ samples: UnsafeBufferPointer<Float>, channels: Int) -> [Float]? {
         stride(from: 0, to: samples.count - channels + 1, by: channels).forEach { i in
             var sum: Float = 0
             for c in 0..<channels { sum += samples[i + c] }
@@ -215,15 +197,6 @@ private final class SpectrumAnalyzer: @unchecked Sendable {
                 vDSP_fft_zrip(setup, &split, 1, 10, FFTDirection(FFT_FORWARD))
                 vDSP_zvabs(&split, 1, &magnitudes, 1, vDSP_Length(n / 2))
             }
-        }
-        if let onVocal {
-            let slice = magnitudes[vocalRange]
-            let power = slice.reduce(0) { $0 + $1 * $1 } / Float(slice.count) / Float(n * n)
-            let db = 10 * log10(max(power, 1e-12))
-            let onset = min(1, max(0, (db - vocalAvg) / 7.0) * 0.5 + min(1, max(0, db - prevVocalDb) / 5.0) * 0.5)
-            prevVocalDb = db
-            vocalAvg += (db - vocalAvg) * 0.04
-            onVocal(onset)
         }
         for b in 0..<smoothed.count {
             let slice = magnitudes[edges[b]..<max(edges[b] + 1, edges[b + 1])]
