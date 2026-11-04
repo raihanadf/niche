@@ -46,7 +46,11 @@ final class Lyrics {
         return measured.width
     }
 
-    func updateTransport(_ transport: UInt32) {
+    func updateTransport(_ transport: UInt32, measuredLatency: Double? = nil) {
+        if let measuredLatency, measuredLatency > 0 {
+            lead = measuredLatency
+            return
+        }
         switch transport {
         case kAudioDeviceTransportTypeBluetooth, kAudioDeviceTransportTypeBluetoothLE:
             lead = 0.22
@@ -136,5 +140,21 @@ final class Lyrics {
         let legacyKeys = defaults.dictionaryRepresentation().keys.filter { $0.hasPrefix("lyrics_offset_") }
         guard !legacyKeys.isEmpty else { return }
         for k in legacyKeys { defaults.removeObject(forKey: k) }
+    }
+}
+
+enum DeviceLatencyStore {
+    private static let key = "niche_device_latency_store"
+
+    static func load(for deviceKey: String) -> Double? {
+        let store = UserDefaults.standard.dictionary(forKey: key) as? [String: Double]
+        return store?[deviceKey]
+    }
+
+    static func save(_ latency: Double, for deviceKey: String) {
+        guard !deviceKey.isEmpty else { return }
+        var store = UserDefaults.standard.dictionary(forKey: key) as? [String: Double] ?? [:]
+        store[deviceKey] = latency
+        UserDefaults.standard.set(store, forKey: key)
     }
 }

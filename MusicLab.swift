@@ -54,6 +54,8 @@ final class MusicPlayer {
         didSet { followLyrics() }
     }
 
+    @ObservationIgnored var playbackTimer: Timer?
+    @ObservationIgnored private var latencyProbe: (t0: Date, pos0: Double)?
     @ObservationIgnored private var elapsedAtTimestamp: Double = 0
     @ObservationIgnored private var timestamp = Date()
     @ObservationIgnored private var rate: Double = 1
@@ -86,9 +88,11 @@ final class MusicPlayer {
         output.onDeviceChange = { [weak self] in
             guard let self else { return }
             self.spectrum.refresh()
-            self.lyrics.updateTransport(self.output.transportType)
+            let key = "\(self.output.symbol)|\(self.lastSnapshot?.app ?? "")"
+            self.lyrics.updateTransport(self.output.transportType, measuredLatency: DeviceLatencyStore.load(for: key))
         }
-        lyrics.updateTransport(output.transportType)
+        let key = "\(output.symbol)|"
+        lyrics.updateTransport(output.transportType, measuredLatency: DeviceLatencyStore.load(for: key))
     }
 
     func start() {
@@ -142,6 +146,11 @@ final class MusicPlayer {
         clearTask?.cancel()
         clearTask = nil
         let isNewSong = lastSong.map { !$0.isSameSong(as: next) } ?? false
+        if isNewSong {
+            latencyProbe = nil
+            let key = "\(output.symbol)|\(snapshot.app ?? "")"
+            lyrics.updateTransport(output.transportType, measuredLatency: DeviceLatencyStore.load(for: key))
+        }
         if isPlaying && !snapshot.isPlaying && !isNewSong {
             elapsedAtTimestamp = max(snapshot.elapsed, min(elapsedAtTimestamp + Date().timeIntervalSince(timestamp) * rate, next.duration))
             timestamp = Date()
@@ -153,6 +162,21 @@ final class MusicPlayer {
         isPlaying = snapshot.isPlaying
         if let shuffle = snapshot.shuffleMode { isShuffled = shuffle != 1 }
         spectrum.follow(pid: snapshot.isPlaying ? snapshot.pid : nil)
+        if isPlaying && !isNewSong && snapshot.rate == 1 {
+            if latencyProbe == nil && snapshot.elapsed > 0.5 {
+                latencyProbe = (Date(), snapshot.elapsed)
+            } else if let probe = latencyProbe, Date().timeIntervalSince(probe.t0) >= 2.0 {
+                let drift = Date().timeIntervalSince(probe.t0) - (snapshot.elapsed - probe.pos0)
+                if abs(drift) < 1.0 {
+                    let key = "\(output.symbol)|\(snapshot.app ?? "")"
+                    DeviceLatencyStore.save(max(0, drift), for: key)
+                    lyrics.updateTransport(output.transportType, measuredLatency: max(0, drift))
+                }
+                latencyProbe = nil
+            }
+        } else {
+            latencyProbe = nil
+        }
         if isNewSong && isShowingLyrics { lyrics.load(next) }
         if isNewSong && next.artwork == nil {
             if pendingSong.map({ !$0.isSameSong(as: next) }) ?? true {
@@ -185,11 +209,16 @@ final class MusicPlayer {
         let live = isPlaying ? Date().timeIntervalSince(timestamp) * rate : 0
         let next = min(max(elapsedAtTimestamp + live, 0), track.duration)
         if next != position { position = next }
-        if isShowingLyrics { lyrics.sync(position) }
+        if isShowingLyrics { lyrics.sync(currentPosition) }
     }
 
     private func followLyrics() {
         lyrics.load(isShowingLyrics ? track : nil)
+        guard playbackTimer == nil else {
+            lyricsTimer?.invalidate()
+            lyricsTimer = nil
+            return
+        }
         let follow = isShowingLyrics && isPlaying
         guard follow != (lyricsTimer != nil) else { return }
         lyricsTimer?.invalidate()
@@ -198,7 +227,7 @@ final class MusicPlayer {
         let timer = Timer(timeInterval: 0.05, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self else { return }
-                self.lyrics.sync(self.currentPosition)
+                self.tick()
             }
         }
         RunLoop.main.add(timer, forMode: .common)
@@ -209,6 +238,7 @@ final class MusicPlayer {
     func skip(forward: Bool) { _ = send(forward ? 4 : 5, nil) }
 
     func seek(to fraction: Double) {
+        latencyProbe = nil
         guard let track else { return }
         let target = track.duration * min(max(fraction, 0), 1)
         setElapsed(target)

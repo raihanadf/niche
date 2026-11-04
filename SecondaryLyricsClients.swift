@@ -101,7 +101,7 @@ enum DeezerClient {
             let next = i + 1 < raw.count ? raw[i + 1].time : time + 6.0
             let sung = max(2.0, Double(text.split(separator: " ").count) * 0.45 + 1.2)
             let end = max(next - time > sung + 2.0 ? time + sung : next, time + 1.0)
-            return LyricLine(id: i, time: time, end: end, text: text)
+            return LyricLine(id: i, time: time, end: end, text: text, charTimings: LyricsParser.charTimings(text: text, start: time, end: end))
         }
     }
 }

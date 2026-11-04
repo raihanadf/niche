@@ -137,10 +137,7 @@ struct ClosedKaraokeLyricsView: View {
         } else if let activeLine = player.lyrics.activeLine, activeLine.text == line {
             TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !player.isPlaying)) { _ in
                 let pos = player.currentPosition + player.lyrics.lead + player.lyrics.offset
-                let duration = max(0.5, activeLine.end - activeLine.time)
-                let t = min(1.0, max(0.0, (pos - activeLine.time) / duration))
-                let progress = t * t * (3.0 - 2.0 * t)
-                Text(sweptText(line: line, progress: progress))
+                Text(sweptText(line: activeLine, currentTime: pos))
             }
         } else {
             Text(line)
@@ -148,19 +145,20 @@ struct ClosedKaraokeLyricsView: View {
         }
     }
 
-    private func sweptText(line: String, progress: Double) -> AttributedString {
-        var str = AttributedString(line)
+    private func sweptText(line: LyricLine, currentTime: Double) -> AttributedString {
+        var str = AttributedString(line.text)
         let indices = Array(str.characters.indices), count = indices.count
-        guard count > 0 else { return str }
-        let cursor = progress * Double(count), radius = 2.5
+        guard count > 0, count == line.charTimings.count else { return str }
+        let radius = 0.08
         for i in 0..<count {
+            let charT = line.charTimings[i]
+            let dist = currentTime - charT
+            let alpha: Double
+            if dist >= radius { alpha = 1.0 }
+            else if dist <= -radius { alpha = 0.30 }
+            else { alpha = 0.30 + 0.70 * ((dist + radius) / (2.0 * radius)) }
             let start = indices[i], end = str.characters.index(after: start)
-            let dist = Double(i) - cursor
-            let color: NSColor
-            if dist <= -radius { color = .white }
-            else if dist >= radius { color = NSColor.white.withAlphaComponent(0.30) }
-            else { color = NSColor.white.withAlphaComponent(1.0 - (dist + radius) / (2.0 * radius) * 0.70) }
-            str[start..<end].foregroundColor = color
+            str[start..<end].foregroundColor = NSColor.white.withAlphaComponent(alpha)
         }
         return str
     }
