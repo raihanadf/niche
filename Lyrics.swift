@@ -11,7 +11,9 @@ final class Lyrics {
     private(set) var index: Int?
     private(set) var isSinging = true
     private(set) var offset: Double = 0.0
-    private(set) var lead: Double = 0.05
+    private(set) var hardwareLead: Double = 0.05
+    let readingLead: Double = 0.30
+    var lead: Double { hardwareLead + readingLead }
     @ObservationIgnored private var key = ""
     @ObservationIgnored private var cache: [String: State] = [:]
     @ObservationIgnored private var task: Task<Void, Never>?
@@ -46,18 +48,14 @@ final class Lyrics {
         return measured.width
     }
 
-    func updateTransport(_ transport: UInt32, measuredLatency: Double? = nil) {
-        if let measuredLatency, measuredLatency > 0 {
-            lead = measuredLatency
-            return
-        }
+    func updateTransport(_ transport: UInt32) {
         switch transport {
         case kAudioDeviceTransportTypeBluetooth, kAudioDeviceTransportTypeBluetoothLE:
-            lead = 0.22
+            hardwareLead = 0.22
         case kAudioDeviceTransportTypeAirPlay:
-            lead = 0.45
+            hardwareLead = 0.45
         default:
-            lead = 0.05
+            hardwareLead = 0.05
         }
     }
 
@@ -137,24 +135,10 @@ final class Lyrics {
 
     private static func purgeLegacyOffsets() {
         let defaults = UserDefaults.standard
+        defaults.removeObject(forKey: "niche_device_latency_store")
         let legacyKeys = defaults.dictionaryRepresentation().keys.filter { $0.hasPrefix("lyrics_offset_") }
         guard !legacyKeys.isEmpty else { return }
         for k in legacyKeys { defaults.removeObject(forKey: k) }
     }
 }
 
-enum DeviceLatencyStore {
-    private static let key = "niche_device_latency_store"
-
-    static func load(for deviceKey: String) -> Double? {
-        let store = UserDefaults.standard.dictionary(forKey: key) as? [String: Double]
-        return store?[deviceKey]
-    }
-
-    static func save(_ latency: Double, for deviceKey: String) {
-        guard !deviceKey.isEmpty else { return }
-        var store = UserDefaults.standard.dictionary(forKey: key) as? [String: Double] ?? [:]
-        store[deviceKey] = latency
-        UserDefaults.standard.set(store, forKey: key)
-    }
-}

@@ -152,11 +152,15 @@ struct ClosedKaraokeLyricsView: View {
         let radius = 0.08
         for i in 0..<count {
             let charT = line.charTimings[i]
-            let dist = currentTime - charT
+            let dist = (currentTime - charT) + 2.0 * radius
             let alpha: Double
-            if dist >= radius { alpha = 1.0 }
-            else if dist <= -radius { alpha = 0.30 }
-            else { alpha = 0.30 + 0.70 * ((dist + radius) / (2.0 * radius)) }
+            if dist >= 2.0 * radius {
+                alpha = 1.0
+            } else if dist <= 0 {
+                alpha = 0.30
+            } else {
+                alpha = 0.30 + 0.70 * (dist / (2.0 * radius))
+            }
             let start = indices[i], end = str.characters.index(after: start)
             str[start..<end].foregroundColor = NSColor.white.withAlphaComponent(alpha)
         }
