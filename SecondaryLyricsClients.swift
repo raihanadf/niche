@@ -1,5 +1,13 @@
 import Foundation
 
+private func isCJKScalar(_ v: UInt32) -> Bool {
+    (0x4E00...0x9FFF).contains(v) || (0x3400...0x4DBF).contains(v) || (0x20000...0x2A6DF).contains(v)
+}
+
+private func hasCJK(_ text: String) -> Bool {
+    text.unicodeScalars.contains { isCJKScalar($0.value) }
+}
+
 private actor DeezerAuthSession {
     static let shared = DeezerAuthSession()
     private var cachedJwt: (token: String, expiresAt: Date)?
@@ -28,9 +36,7 @@ enum DeezerClient {
     static func fetch(title: String, artist: String, duration: Double) async -> [LyricLine]? {
         let cleanTitle = LyricsNormalization.cleanTitle(title)
         let primaryArtist = LyricsNormalization.artistVariants(artist).first ?? artist
-        let query = "\(cleanTitle) \(primaryArtist)"
-
-        guard let trackId = await searchTrack(query: query, duration: duration),
+        guard let trackId = await searchTrack(title: cleanTitle, artist: primaryArtist, duration: duration),
               let jwt = await DeezerAuthSession.shared.token() else {
             return nil
         }
@@ -38,9 +44,13 @@ enum DeezerClient {
         return await fetchLyrics(trackId: trackId, jwt: jwt)
     }
 
-    private static func searchTrack(query: String, duration: Double) async -> Int? {
+    private static func searchTrack(title: String, artist: String, duration: Double) async -> Int? {
+        let cleanLower = title.lowercased()
         var comp = URLComponents(string: "https://api.deezer.com/search")!
-        comp.queryItems = [URLQueryItem(name: "q", value: query), URLQueryItem(name: "limit", value: "5")]
+        comp.queryItems = [
+            URLQueryItem(name: "q", value: "\(title) \(artist)"),
+            URLQueryItem(name: "limit", value: "5")
+        ]
         guard let url = comp.url else { return nil }
         var req = URLRequest(url: url, timeoutInterval: 4)
         req.setValue("Mozilla/5.0", forHTTPHeaderField: "User-Agent")
@@ -50,10 +60,14 @@ enum DeezerClient {
                   let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let tracks = json["data"] as? [[String: Any]], !tracks.isEmpty else { return nil }
             let matched = tracks.first { track in
-                guard duration > 0, let dur = track["duration"] as? Double else { return true }
-                return abs(dur - duration) <= 12.0
-            } ?? tracks[0]
-            return matched["id"] as? Int
+                let trackTitle = (track["title"] as? String)?.lowercased() ?? ""
+                guard trackTitle.contains(cleanLower) || cleanLower.contains(trackTitle) else { return false }
+                if duration > 0, let dur = track["duration"] as? Double {
+                    guard abs(dur - duration) <= 3.5 else { return false }
+                }
+                return true
+            }
+            return matched?["id"] as? Int
         } catch {
             return nil
         }
@@ -110,16 +124,19 @@ enum NetEaseClient {
     static func fetch(title: String, artist: String, duration: Double) async -> [LyricLine]? {
         let cleanTitle = LyricsNormalization.cleanTitle(title)
         let primaryArtist = LyricsNormalization.artistVariants(artist).first ?? artist
-        let query = "\(cleanTitle) \(primaryArtist)"
+        let isQueryCJK = hasCJK(title) || hasCJK(artist)
 
-        guard let songId = await searchSong(query: query, duration: duration) else { return nil }
-        return await fetchLyrics(songId: songId)
+        guard let songId = await searchSong(title: cleanTitle, artist: primaryArtist, duration: duration, isQueryCJK: isQueryCJK) else {
+            return nil
+        }
+        return await fetchLyrics(songId: songId, isQueryCJK: isQueryCJK)
     }
 
-    private static func searchSong(query: String, duration: Double) async -> Int? {
+    private static func searchSong(title: String, artist: String, duration: Double, isQueryCJK: Bool) async -> Int? {
+        let cleanLower = title.lowercased()
         var comp = URLComponents(string: "https://music.163.com/api/search/get")!
         comp.queryItems = [
-            URLQueryItem(name: "s", value: query),
+            URLQueryItem(name: "s", value: "\(title) \(artist)"),
             URLQueryItem(name: "type", value: "1"),
             URLQueryItem(name: "limit", value: "5")
         ]
@@ -133,16 +150,23 @@ enum NetEaseClient {
                   let result = json["result"] as? [String: Any],
                   let songs = result["songs"] as? [[String: Any]], !songs.isEmpty else { return nil }
             let matched = songs.first { song in
-                guard duration > 0, let durMs = song["duration"] as? Double else { return true }
-                return abs(durMs / 1000.0 - duration) <= 12.0
-            } ?? songs[0]
-            return matched["id"] as? Int
+                let songName = (song["name"] as? String)?.lowercased() ?? ""
+                if !isQueryCJK && hasCJK(songName) && !songName.contains(cleanLower) {
+                    return false
+                }
+                guard songName.contains(cleanLower) || cleanLower.contains(songName) else { return false }
+                if duration > 0, let durMs = song["duration"] as? Double {
+                    guard abs(durMs / 1000.0 - duration) <= 3.5 else { return false }
+                }
+                return true
+            }
+            return matched?["id"] as? Int
         } catch {
             return nil
         }
     }
 
-    private static func fetchLyrics(songId: Int) async -> [LyricLine]? {
+    private static func fetchLyrics(songId: Int, isQueryCJK: Bool) async -> [LyricLine]? {
         var comp = URLComponents(string: "https://music.163.com/api/song/lyric")!
         comp.queryItems = [
             URLQueryItem(name: "id", value: "\(songId)"),
@@ -159,7 +183,16 @@ enum NetEaseClient {
                   let lrc = json["lrc"] as? [String: Any],
                   let lyricText = lrc["lyric"] as? String else { return nil }
             let lines = LyricsParser.parseLRC(lyricText)
-            return lines.isEmpty ? nil : lines
+            guard !lines.isEmpty else { return nil }
+            if !isQueryCJK {
+                let allChars = lines.map(\.text).joined()
+                guard !allChars.isEmpty else { return nil }
+                let cjkCount = allChars.unicodeScalars.filter { isCJKScalar($0.value) }.count
+                if Double(cjkCount) / Double(allChars.count) > 0.25 {
+                    return nil
+                }
+            }
+            return lines
         } catch {
             return nil
         }
