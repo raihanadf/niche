@@ -43,10 +43,18 @@ enum LyricsParser {
         stamps.sort { $0.time < $1.time }
         return stamps.indices.map { i in
             let (time, text) = stamps[i]
-            let next = i + 1 < stamps.count ? stamps[i + 1].time : time + 6.0
             let words = Double(max(1, text.split(separator: " ").count))
-            let guess = max(1.4, min(7.0, words * 0.36 + 0.6))
-            let end = max(time + 0.8, min(next - 0.1, time + guess))
+            let chars = Double(max(1, text.count))
+            let next = i + 1 < stamps.count ? stamps[i + 1].time : time + max(3.5, min(7.0, words * 0.45 + 1.2))
+            let gap = max(0.6, next - time)
+            let duration: Double
+            if gap <= 6.0 {
+                duration = max(0.5, gap - min(0.4, gap * 0.12))
+            } else {
+                let ceiling = max(3.0, min(8.0, words * 0.45 + chars * 0.06 + 1.0))
+                duration = min(gap - 0.5, ceiling)
+            }
+            let end = max(time + 0.5, time + duration)
             return LyricLine(id: i, time: time, end: end, text: text)
         }
     }

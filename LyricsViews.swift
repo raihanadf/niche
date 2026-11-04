@@ -6,14 +6,9 @@ struct LyricsView: View {
     let track: Track
     static let height: CGFloat = 140
     private static let mask = LinearGradient(
-        stops: [
-            .init(color: .clear, location: 0),
-            .init(color: .black, location: 0.16),
-            .init(color: .black, location: 0.84),
-            .init(color: .clear, location: 1)
-        ],
-        startPoint: .top,
-        endPoint: .bottom
+        stops: [.init(color: .clear, location: 0), .init(color: .black, location: 0.16),
+                .init(color: .black, location: 0.84), .init(color: .clear, location: 1)],
+        startPoint: .top, endPoint: .bottom
     )
 
     var body: some View {
@@ -107,9 +102,7 @@ private struct LyricRow: View {
     }
 
     private var opacity: Double {
-        if isActive { return 1 }
-        if isHovered { return 0.85 }
-        return [0.55, 0.42, 0.2, 0.08][min(distance, 3)]
+        isActive ? 1 : (isHovered ? 0.85 : [0.55, 0.42, 0.2, 0.08][min(distance, 3)])
     }
 }
 
@@ -124,6 +117,11 @@ struct ClosedKaraokeLyricsView: View {
             .multilineTextAlignment(twoRows ? .leading : .center)
             .lineLimit(twoRows ? 2 : 1)
             .minimumScaleFactor(0.70)
+            .overlay {
+                ScrollAdjustOverlay { delta in
+                    player.lyrics.adjustOffset(by: delta)
+                }
+            }
     }
 
     @ViewBuilder
@@ -138,9 +136,10 @@ struct ClosedKaraokeLyricsView: View {
             }
         } else if let activeLine = player.lyrics.activeLine, activeLine.text == line {
             TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !player.isPlaying)) { _ in
-                let pos = player.currentPosition + Lyrics.lead + player.lyrics.offset
+                let pos = player.currentPosition + player.lyrics.lead + player.lyrics.offset
                 let duration = max(0.5, activeLine.end - activeLine.time)
-                let progress = min(1.0, max(0.0, (pos - activeLine.time) / duration))
+                let t = min(1.0, max(0.0, (pos - activeLine.time) / duration))
+                let progress = t * t * (3.0 - 2.0 * t)
                 Text(sweptText(line: line, progress: progress))
             }
         } else {
@@ -151,28 +150,43 @@ struct ClosedKaraokeLyricsView: View {
 
     private func sweptText(line: String, progress: Double) -> AttributedString {
         var str = AttributedString(line)
-        let indices = Array(str.characters.indices)
-        let count = indices.count
+        let indices = Array(str.characters.indices), count = indices.count
         guard count > 0 else { return str }
-
-        let cursor = progress * Double(count)
-        let radius = 2.5
-
+        let cursor = progress * Double(count), radius = 2.5
         for i in 0..<count {
-            let start = indices[i]
-            let end = str.characters.index(after: start)
+            let start = indices[i], end = str.characters.index(after: start)
             let dist = Double(i) - cursor
             let color: NSColor
-            if dist <= -radius {
-                color = .white
-            } else if dist >= radius {
-                color = NSColor.white.withAlphaComponent(0.30)
-            } else {
-                let t = (dist + radius) / (2.0 * radius)
-                color = NSColor.white.withAlphaComponent(1.0 - t * 0.70)
-            }
+            if dist <= -radius { color = .white }
+            else if dist >= radius { color = NSColor.white.withAlphaComponent(0.30) }
+            else { color = NSColor.white.withAlphaComponent(1.0 - (dist + radius) / (2.0 * radius) * 0.70) }
             str[start..<end].foregroundColor = color
         }
         return str
+    }
+}
+
+private struct ScrollAdjustOverlay: NSViewRepresentable {
+    let onScroll: (Double) -> Void
+
+    func makeNSView(context: Context) -> ScrollCatcherView {
+        let view = ScrollCatcherView(); view.onScroll = onScroll; return view
+    }
+    func updateNSView(_ nsView: ScrollCatcherView, context: Context) { nsView.onScroll = onScroll }
+
+    final class ScrollCatcherView: NSView {
+        var onScroll: ((Double) -> Void)?
+
+        override func scrollWheel(with event: NSEvent) {
+            let dy = event.scrollingDeltaY != 0 ? event.scrollingDeltaY : event.deltaY
+            let dx = event.scrollingDeltaX != 0 ? event.scrollingDeltaX : event.deltaX
+            let d = abs(dy) >= abs(dx) ? dy : dx
+            guard abs(d) > 0.001 else { return }
+            let scale = event.hasPreciseScrollingDeltas ? 0.005 : 0.05
+            onScroll?(Double(d) * scale)
+        }
+        override func mouseDown(with event: NSEvent) { nextResponder?.mouseDown(with: event) }
+        override func mouseDragged(with event: NSEvent) { nextResponder?.mouseDragged(with: event) }
+        override func mouseUp(with event: NSEvent) { nextResponder?.mouseUp(with: event) }
     }
 }

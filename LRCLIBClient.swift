@@ -63,34 +63,21 @@ enum LRCLIBClient {
         }
 
         let itemArtist = (item["artistName"] as? String)?.lowercased() ?? ""
-        var artistMatched = false
         for a in artists {
             let aLower = a.lowercased()
             if itemArtist == aLower {
                 score += 400
-                artistMatched = true
                 break
             } else if itemArtist.contains(aLower) || aLower.contains(itemArtist) {
                 score += 200
-                artistMatched = true
                 break
             }
         }
 
         if duration > 0, let itemDur = item["duration"] as? Double {
             let diff = abs(itemDur - duration)
-            if diff <= 3.0 {
-                score += 300
-            } else if diff <= 8.0 {
-                score += 150
-            } else if diff <= 15.0 {
-                score += 50
-            } else if diff > 30.0 {
-                if !artistMatched || (itemTitle != cleanLower && !itemTitle.contains(cleanLower)) {
-                    return nil
-                }
-                score -= 200
-            }
+            guard diff <= 2.5 else { return nil }
+            score += 300
         }
         return score
     }

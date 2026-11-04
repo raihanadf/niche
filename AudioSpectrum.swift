@@ -17,40 +17,26 @@ final class AudioSpectrum {
             guard isEnabled != oldValue else { return }
             let wanted = requestedPID
             stop()
-            if isEnabled || onPcmSamples != nil { follow(pid: wanted) }
-        }
-    }
-    @ObservationIgnored var onPcmSamples: (@Sendable (UnsafeBufferPointer<Float>, Int, Float) -> Void)? {
-        didSet {
-            let shouldTap = isEnabled || onPcmSamples != nil
-            if shouldTap != (pid != 0) {
-                let wanted = requestedPID
-                stop()
-                if shouldTap { follow(pid: wanted) }
-            } else if pid != 0 {
-                refresh()
-            }
+            if isEnabled { follow(pid: wanted) }
         }
     }
     @ObservationIgnored private let session = TapSession()
 
     func follow(pid: pid_t?) {
         requestedPID = pid ?? 0
-        let shouldTap = isEnabled || onPcmSamples != nil
-        let target = shouldTap ? requestedPID : 0
+        let target = isEnabled ? requestedPID : 0
         self.pid = target
         levels = [Float](repeating: 0, count: Self.bands)
-        let pcmHandler = onPcmSamples
         session.queue.async { [session, weak self] in
             session.stop()
             guard target > 0 else { return }
             do {
-                try session.start(pid: target, onLevels: { [weak self] levels in
+                try session.start(pid: target) { [weak self] levels in
                     Task { @MainActor in
                         guard let self, self.pid == target, self.isEnabled, zip(self.levels, levels).contains(where: { abs($0 - $1) >= 0.008 }) else { return }
                         self.levels = levels
                     }
-                }, onSamples: pcmHandler)
+                }
             } catch {
                 NSLog("Niche audio tap failed for pid %d: %@", target, String(describing: error))
                 session.stop()
@@ -93,7 +79,7 @@ private final class TapSession: @unchecked Sendable {
         procID = nil
     }
 
-    func start(pid: pid_t, onLevels: @escaping @Sendable ([Float]) -> Void, onSamples: (@Sendable (UnsafeBufferPointer<Float>, Int, Float) -> Void)? = nil) throws {
+    func start(pid: pid_t, onLevels: @escaping @Sendable ([Float]) -> Void) throws {
         let process = try Self.read(AudioObjectID(kAudioObjectSystemObject), kAudioHardwarePropertyTranslatePIDToProcessObject,
                                     qualifier: pid, as: AudioObjectID.self)
         guard process != kAudioObjectUnknown else { throw TapError.noAudioProcess }
@@ -131,7 +117,6 @@ private final class TapSession: @unchecked Sendable {
             guard let first = buffers.first, let data = first.mData else { return }
             let samples = UnsafeBufferPointer(start: data.assumingMemoryBound(to: Float.self),
                                               count: Int(first.mDataByteSize) / MemoryLayout<Float>.size)
-            onSamples?(samples, interleavedChannels, sampleRate)
             guard let levels = analyzer.process(samples, channels: interleavedChannels) else { return }
             onLevels(levels)
         }, "create IO proc")

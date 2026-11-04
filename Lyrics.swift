@@ -1,4 +1,5 @@
 import AppKit
+import CoreAudio
 import SwiftUI
 
 @MainActor
@@ -10,14 +11,19 @@ final class Lyrics {
     private(set) var index: Int?
     private(set) var isSinging = true
     private(set) var offset: Double = 0.0
+    private(set) var lead: Double = 0.05
     @ObservationIgnored private var key = ""
     @ObservationIgnored private var cache: [String: State] = [:]
     @ObservationIgnored private var task: Task<Void, Never>?
     @ObservationIgnored private var measured = (text: "", width: CGFloat(0))
 
-    static let lead = 0.38
+    private static let userOffsetsKey = "lyrics_user_offsets"
     private static let resize = Animation.spring(response: 0.45, dampingFraction: 0.95)
     static let closedFont = NSFont(descriptor: NSFont.systemFont(ofSize: 11.5, weight: .semibold).fontDescriptor.withDesign(.rounded)!, size: 11.5)!
+
+    init() {
+        Self.purgeLegacyOffsets()
+    }
 
     var line: String {
         guard case .loaded(let lines, let synced) = state else { return "" }
@@ -40,7 +46,26 @@ final class Lyrics {
         return measured.width
     }
 
-    func setOffset(_ val: Double) { offset = val }
+    func updateTransport(_ transport: UInt32) {
+        switch transport {
+        case kAudioDeviceTransportTypeBluetooth, kAudioDeviceTransportTypeBluetoothLE:
+            lead = 0.22
+        case kAudioDeviceTransportTypeAirPlay:
+            lead = 0.45
+        default:
+            lead = 0.05
+        }
+    }
+
+    func setOffset(_ val: Double) {
+        offset = min(max(val, -5.0), 5.0)
+        saveUserOffset(offset)
+    }
+
+    func adjustOffset(by delta: Double) {
+        offset = min(max(offset + delta, -5.0), 5.0)
+        saveUserOffset(offset)
+    }
 
     func load(_ track: Track?) {
         guard let track else {
@@ -56,7 +81,7 @@ final class Lyrics {
         let key = "\(track.artist)|\(track.title)".lowercased()
         guard key != self.key else { return }
         self.key = key
-        self.offset = 0.0
+        self.offset = loadUserOffset(for: key)
         task?.cancel()
         withAnimation(Self.resize) {
             index = nil
@@ -80,7 +105,7 @@ final class Lyrics {
 
     func sync(_ position: Double) {
         guard case .loaded(let lines, synced: true) = state else { return }
-        let at = position + Self.lead + offset
+        let at = position + lead + offset
         let next = lines.lastIndex { $0.time <= at }
         let singing = next.map { at <= lines[$0].end } ?? true
         guard next != index || singing != isSinging else { return }
@@ -88,5 +113,28 @@ final class Lyrics {
             index = next
             isSinging = singing
         }
+    }
+
+    private func loadUserOffset(for key: String) -> Double {
+        let all = UserDefaults.standard.dictionary(forKey: Self.userOffsetsKey) as? [String: Double]
+        return all?[key] ?? 0.0
+    }
+
+    private func saveUserOffset(_ val: Double) {
+        guard !key.isEmpty else { return }
+        var all = UserDefaults.standard.dictionary(forKey: Self.userOffsetsKey) as? [String: Double] ?? [:]
+        if abs(val) < 0.005 {
+            all.removeValue(forKey: key)
+        } else {
+            all[key] = val
+        }
+        UserDefaults.standard.set(all, forKey: Self.userOffsetsKey)
+    }
+
+    private static func purgeLegacyOffsets() {
+        let defaults = UserDefaults.standard
+        let legacyKeys = defaults.dictionaryRepresentation().keys.filter { $0.hasPrefix("lyrics_offset_") }
+        guard !legacyKeys.isEmpty else { return }
+        for k in legacyKeys { defaults.removeObject(forKey: k) }
     }
 }

@@ -6,6 +6,7 @@ import Foundation
 @Observable
 final class OutputDevice {
     private(set) var symbol = "laptopcomputer"
+    private(set) var transportType: UInt32 = kAudioDeviceTransportTypeBuiltIn
     private(set) var volume: Double = 0
     private(set) var isMuted = false
     private(set) var canSetVolume = false
@@ -85,21 +86,23 @@ final class OutputDevice {
         size = UInt32(MemoryLayout<UInt32>.size)
         if AudioObjectHasProperty(device, &address) { AudioObjectGetPropertyData(device, &address, 0, nil, &size, &muted) }
         isMuted = muted != 0
+        var transport = UInt32(0)
+        size = UInt32(MemoryLayout<UInt32>.size)
+        address = Self.address(kAudioDevicePropertyTransportType, scope: kAudioObjectPropertyScopeGlobal)
+        if AudioObjectGetPropertyData(device, &address, 0, nil, &size, &transport) == noErr {
+            transportType = transport
+        }
         symbol = deviceSymbol()
     }
 
     private func deviceSymbol() -> String {
-        var transport = UInt32(0)
-        var size = UInt32(MemoryLayout<UInt32>.size)
-        var address = Self.address(kAudioDevicePropertyTransportType, scope: kAudioObjectPropertyScopeGlobal)
-        AudioObjectGetPropertyData(device, &address, 0, nil, &size, &transport)
         var name: Unmanaged<CFString>?
-        size = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
-        address = Self.address(kAudioObjectPropertyName, scope: kAudioObjectPropertyScopeGlobal)
+        var size = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
+        var address = Self.address(kAudioObjectPropertyName, scope: kAudioObjectPropertyScopeGlobal)
         AudioObjectGetPropertyData(device, &address, 0, nil, &size, &name)
         let label = (name?.takeRetainedValue() as String?)?.lowercased() ?? ""
 
-        switch transport {
+        switch transportType {
         case kAudioDeviceTransportTypeBuiltIn:
             var source = UInt32(0)
             size = UInt32(MemoryLayout<UInt32>.size)
