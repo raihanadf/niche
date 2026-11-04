@@ -55,7 +55,7 @@ final class Lyrics {
         case kAudioDeviceTransportTypeAirPlay:
             hardwareLead = 0.45
         default:
-            hardwareLead = 0.20
+            hardwareLead = 0.35
         }
     }
 
