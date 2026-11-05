@@ -288,7 +288,7 @@ final class LiveActivityCenter {
         let step: Float = fine ? 1.0 / 64 : 1.0 / 16
         if !isVolume && isDown { brightnessKeyAt = Date() }
         guard replacesSystemHUD else { return false }
-        if isVolume && (isBluetoothOutput || Self.isBluetooth(volumeDevice)) { return false }
+        if isVolume && isBluetoothOutput { return false }
         guard isDown else { return true }
         if isVolume {
             let now = CACurrentMediaTime()
@@ -338,6 +338,7 @@ final class LiveActivityCenter {
         }
         AudioObjectSetPropertyData(device, &volume, 0, nil, size, &newLevel)
     }
+
     nonisolated private static func isBluetooth(_ device: AudioObjectID) -> Bool {
         var transport = UInt32(0)
         var size = UInt32(MemoryLayout<UInt32>.size)
@@ -347,7 +348,6 @@ final class LiveActivityCenter {
         guard AudioObjectGetPropertyData(device, &address, 0, nil, &size, &transport) == noErr else { return false }
         return transport == kAudioDeviceTransportTypeBluetooth || transport == kAudioDeviceTransportTypeBluetoothLE
     }
-
 
     private func readCaps() {
         let caps = CGEventSource.flagsState(.combinedSessionState).contains(.maskAlphaShift)

@@ -31,8 +31,8 @@ final class MusicPlayer {
     private(set) var position: Double = 0
     private(set) var songChangeToken = 0
     var currentPosition: Double {
-        guard let track, isPlaying else { return position }
-        let live = Date().timeIntervalSince(timestamp) * rate
+        guard let track else { return position }
+        let live = isPlaying ? Date().timeIntervalSince(timestamp) * rate : 0
         return min(max(elapsedAtTimestamp + live, 0), track.duration)
     }
     var allowsAnyApp: Bool {
@@ -54,7 +54,6 @@ final class MusicPlayer {
         didSet { followLyrics() }
     }
 
-    @ObservationIgnored var playbackTimer: Timer?
     @ObservationIgnored private var elapsedAtTimestamp: Double = 0
     @ObservationIgnored private var timestamp = Date()
     @ObservationIgnored private var rate: Double = 1
@@ -143,9 +142,6 @@ final class MusicPlayer {
         clearTask?.cancel()
         clearTask = nil
         let isNewSong = lastSong.map { !$0.isSameSong(as: next) } ?? false
-        if isNewSong {
-            lyrics.updateTransport(output.transportType)
-        }
         if isPlaying && !snapshot.isPlaying && !isNewSong {
             elapsedAtTimestamp = max(snapshot.elapsed, min(elapsedAtTimestamp + Date().timeIntervalSince(timestamp) * rate, next.duration))
             timestamp = Date()
@@ -157,6 +153,7 @@ final class MusicPlayer {
         isPlaying = snapshot.isPlaying
         if let shuffle = snapshot.shuffleMode { isShuffled = shuffle != 1 }
         spectrum.follow(pid: snapshot.isPlaying ? snapshot.pid : nil)
+
         if isNewSong && isShowingLyrics { lyrics.load(next) }
         if isNewSong && next.artwork == nil {
             if pendingSong.map({ !$0.isSameSong(as: next) }) ?? true {
@@ -185,29 +182,23 @@ final class MusicPlayer {
     }
 
     func tick() {
-        guard let track else { return }
-        let live = isPlaying ? Date().timeIntervalSince(timestamp) * rate : 0
-        let next = min(max(elapsedAtTimestamp + live, 0), track.duration)
+        guard track != nil else { return }
+        let next = currentPosition
         if next != position { position = next }
-        if isShowingLyrics { lyrics.sync(currentPosition) }
+        if isShowingLyrics { lyrics.sync(next) }
     }
 
     private func followLyrics() {
         lyrics.load(isShowingLyrics ? track : nil)
-        guard playbackTimer == nil else {
-            lyricsTimer?.invalidate()
-            lyricsTimer = nil
-            return
-        }
         let follow = isShowingLyrics && isPlaying
         guard follow != (lyricsTimer != nil) else { return }
         lyricsTimer?.invalidate()
         lyricsTimer = nil
         guard follow else { return }
-        let timer = Timer(timeInterval: 0.05, repeats: true) { [weak self] _ in
+        let timer = Timer(timeInterval: 0.1, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self else { return }
-                self.tick()
+                self.lyrics.sync(self.currentPosition)
             }
         }
         RunLoop.main.add(timer, forMode: .common)
@@ -894,10 +885,10 @@ struct MusicClosedView: View {
         }
     }
 
-    private func lyric(_ line: String, twoRows: Bool) -> some View {
+    private func lyric(_ text: String, twoRows: Bool) -> some View {
         ZStack {
-            ClosedKaraokeLyricsView(player: player, line: line, twoRows: twoRows)
-                .id(line)
+            ClosedLyric(player: player, text: text, twoRows: twoRows)
+                .id(text)
                 .transition(.blurReplace(.downUp))
         }
         .frame(maxWidth: .infinity, alignment: twoRows ? .leading : .center)

@@ -25,6 +25,7 @@ final class AudioSpectrum {
     func follow(pid: pid_t?) {
         requestedPID = pid ?? 0
         let target = isEnabled ? requestedPID : 0
+        guard target != self.pid else { return }
         self.pid = target
         levels = [Float](repeating: 0, count: Self.bands)
         session.queue.async { [session, weak self] in
@@ -106,8 +107,7 @@ private final class TapSession: @unchecked Sendable {
 
         let format = try Self.read(tapID, kAudioTapPropertyFormat, as: AudioStreamBasicDescription.self)
         guard format.mFormatID == kAudioFormatLinearPCM, format.mFormatFlags & kAudioFormatFlagIsFloat != 0 else { throw TapError.notFloat }
-        let sampleRate = Float(format.mSampleRate)
-        let analyzer = SpectrumAnalyzer(bands: AudioSpectrum.bands, sampleRate: sampleRate)
+        let analyzer = SpectrumAnalyzer(bands: AudioSpectrum.bands, sampleRate: Float(format.mSampleRate))
         let interleavedChannels = (format.mFormatFlags & kAudioFormatFlagIsNonInterleaved) != 0 ? 1 : Int(format.mChannelsPerFrame)
         let ioQueue = DispatchQueue(label: "niche.spectrum", qos: .userInteractive)
         self.ioQueue = ioQueue
@@ -198,6 +198,7 @@ private final class SpectrumAnalyzer: @unchecked Sendable {
                 vDSP_zvabs(&split, 1, &magnitudes, 1, vDSP_Length(n / 2))
             }
         }
+
         for b in 0..<smoothed.count {
             let slice = magnitudes[edges[b]..<max(edges[b] + 1, edges[b + 1])]
             let power = slice.reduce(0) { $0 + $1 * $1 } / Float(slice.count) / Float(n * n)

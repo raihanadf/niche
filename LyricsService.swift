@@ -12,10 +12,8 @@ actor LyricsService {
         let dSynced = dLines?.contains { $0.time > 0 } == true
 
         if let lLines, let dLines, lSynced, dSynced {
-            let lDur = lLines.last?.end ?? 0
-            let dDur = dLines.last?.end ?? 0
-            let lDiff = abs(lDur - duration)
-            let dDiff = abs(dDur - duration)
+            let lDiff = abs(lLines[lLines.count - 1].end - duration)
+            let dDiff = abs(dLines[dLines.count - 1].end - duration)
             return .loaded(dDiff <= lDiff ? dLines : lLines, synced: true)
         }
 

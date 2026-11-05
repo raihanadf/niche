@@ -13,7 +13,21 @@ enum LyricsNormalization {
 
     private static let trailingPunctuation = CharacterSet(charactersIn: " \"'“”.,-~")
 
-    static func cleanTitle(_ title: String) -> String {
+    static func song(title: String, artist: String) -> (title: String, artists: [String]) {
+        var artist = artist.trimmingCharacters(in: .whitespaces)
+        for suffix in [" - Topic", "VEVO"] where artist.hasSuffix(suffix) { artist = String(artist.dropLast(suffix.count)) }
+        artist = artist.trimmingCharacters(in: .whitespaces)
+        var title = cleanTitle(title)
+        let parts = title.components(separatedBy: " - ")
+        let isChannel = ["kexp", "vevo", "records", "channel", "music", "tv"].contains { artist.lowercased().contains($0) }
+        if parts.count > 1, artist.isEmpty || isChannel || artist.caseInsensitiveCompare(parts[0]) == .orderedSame {
+            artist = parts[0]
+            title = parts.dropFirst().joined(separator: " - ")
+        }
+        return (title.trimmingCharacters(in: trailingPunctuation), artistVariants(artist))
+    }
+
+    private static func cleanTitle(_ title: String) -> String {
         var cleaned = replace(noiseRegex, in: title)
         cleaned = replace(versionRegex, in: cleaned)
         if let dashRange = cleaned.range(of: " - ", options: .backwards) {
@@ -28,29 +42,18 @@ enum LyricsNormalization {
         return cleaned.trimmingCharacters(in: trailingPunctuation)
     }
 
-    static func artistVariants(_ artist: String) -> [String] {
-        var raw = artist.trimmingCharacters(in: .whitespaces)
-        for suffix in [" - Topic", "VEVO"] where raw.hasSuffix(suffix) {
-            raw = String(raw.dropLast(suffix.count))
-        }
-        raw = raw.trimmingCharacters(in: .whitespaces)
-        guard !raw.isEmpty else { return [] }
-
+    private static func artistVariants(_ artist: String) -> [String] {
         var list: [String] = []
-
         func add(_ s: String) {
             let t = s.trimmingCharacters(in: trailingPunctuation)
             guard !t.isEmpty, !list.contains(t) else { return }
             list.append(t)
         }
 
-        if raw.hasPrefix(".") {
-            add(String(raw.dropFirst()))
-        }
-        add(raw)
-
+        if artist.hasPrefix(".") { add(String(artist.dropFirst())) }
+        add(artist)
         let separators = #/\s*(?:,|&|\band\b|\bx\b|\bfeat\.?\b|\bft\.?\b|\bwith\b)\s*/#.ignoresCase()
-        let parts = raw.split(separator: separators).map(String.init)
+        let parts = artist.split(separator: separators).map(String.init)
         if parts.count > 1 {
             for part in parts {
                 if part.hasPrefix(".") { add(String(part.dropFirst())) }

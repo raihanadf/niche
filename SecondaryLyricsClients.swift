@@ -19,6 +19,7 @@ private actor DeezerAuthSession {
             cachedJwt = (jwt, Date().addingTimeInterval(300))
             return jwt
         } catch {
+            NSLog("Niche could not reach deezer: %@", String(describing: error))
             return nil
         }
     }
@@ -26,9 +27,8 @@ private actor DeezerAuthSession {
 
 enum DeezerClient {
     static func fetch(title: String, artist: String, duration: Double) async -> [LyricLine]? {
-        let cleanTitle = LyricsNormalization.cleanTitle(title)
-        let primaryArtist = LyricsNormalization.artistVariants(artist).first ?? artist
-        let query = "\(cleanTitle) \(primaryArtist)"
+        let song = LyricsNormalization.song(title: title, artist: artist)
+        let query = ([song.title] + song.artists.prefix(1)).joined(separator: " ")
 
         guard let trackId = await searchTrack(query: query, duration: duration),
               let jwt = await DeezerAuthSession.shared.token() else {
@@ -52,9 +52,10 @@ enum DeezerClient {
             let matched = tracks.first { track in
                 guard duration > 0, let dur = track["duration"] as? Double else { return true }
                 return abs(dur - duration) <= 12.0
-            } ?? tracks[0]
-            return matched["id"] as? Int
+            }
+            return matched?["id"] as? Int
         } catch {
+            NSLog("Niche could not reach deezer: %@", String(describing: error))
             return nil
         }
     }
@@ -84,6 +85,7 @@ enum DeezerClient {
             }
             return nil
         } catch {
+            NSLog("Niche could not reach deezer: %@", String(describing: error))
             return nil
         }
     }
@@ -108,9 +110,8 @@ enum DeezerClient {
 
 enum NetEaseClient {
     static func fetch(title: String, artist: String, duration: Double) async -> [LyricLine]? {
-        let cleanTitle = LyricsNormalization.cleanTitle(title)
-        let primaryArtist = LyricsNormalization.artistVariants(artist).first ?? artist
-        let query = "\(cleanTitle) \(primaryArtist)"
+        let song = LyricsNormalization.song(title: title, artist: artist)
+        let query = ([song.title] + song.artists.prefix(1)).joined(separator: " ")
 
         guard let songId = await searchSong(query: query, duration: duration) else { return nil }
         return await fetchLyrics(songId: songId)
@@ -135,9 +136,10 @@ enum NetEaseClient {
             let matched = songs.first { song in
                 guard duration > 0, let durMs = song["duration"] as? Double else { return true }
                 return abs(durMs / 1000.0 - duration) <= 12.0
-            } ?? songs[0]
-            return matched["id"] as? Int
+            }
+            return matched?["id"] as? Int
         } catch {
+            NSLog("Niche could not reach netease: %@", String(describing: error))
             return nil
         }
     }
@@ -161,6 +163,7 @@ enum NetEaseClient {
             let lines = LyricsParser.parseLRC(lyricText)
             return lines.isEmpty ? nil : lines
         } catch {
+            NSLog("Niche could not reach netease: %@", String(describing: error))
             return nil
         }
     }
