@@ -1,5 +1,17 @@
 # changelog
 
+## 0.7.0
+
+karaoke lyrics in the closed notch, and more places to find lyrics. thanks @David4rr.
+
+- the current lyric in the closed notch lights up word by word as it's sung, and the waiting `♪` breathes while music plays. the sweep runs in core animation, so the closed notch with lyrics stays around 7-9% cpu.
+- lyrics now come from lrclib.net, deezer and netease. lrclib and deezer are asked at the same time and the closer match wins; netease is the fallback. results with the wrong song length are skipped instead of showing another song's lyrics.
+- lyrics timing follows the output device: a little earlier for bluetooth and airplay, which play late.
+- on macs with a camera notch, the lyrics panel no longer draws a line under the camera.
+- volume keys on bluetooth headphones are left to macos, which should stop a volume loop seen on some earbuds.
+- animations across the notch share one set of timings.
+- memory: 20-21 mb after launch, same as 0.6.9.7. the download is 2.5 mb (+25 kb).
+
 ## 0.6.9.7
 
 - the notch picture and agent marks in the closed notch sat at the top edge since the lyrics change. they're vertically centered again.
