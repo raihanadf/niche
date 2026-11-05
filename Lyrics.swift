@@ -22,7 +22,6 @@ final class Lyrics {
     @ObservationIgnored private var measured = (text: "", width: CGFloat(0))
 
     static let lead = 0.5
-    private static let resize = Animation.spring(response: 0.45, dampingFraction: 0.95)
     static let closedFont = NSFont(descriptor: NSFont.systemFont(ofSize: 11.5, weight: .semibold).fontDescriptor.withDesign(.rounded)!, size: 11.5)!
 
     var line: String {
@@ -44,7 +43,7 @@ final class Lyrics {
         guard let track else {
             task?.cancel()
             key = ""
-            withAnimation(Self.resize) {
+            withAnimation(.settle) {
                 state = .idle
                 index = nil
             }
@@ -54,7 +53,7 @@ final class Lyrics {
         guard key != self.key else { return }
         self.key = key
         task?.cancel()
-        withAnimation(Self.resize) {
+        withAnimation(.settle) {
             index = nil
             if let cached = cache[key] { state = cached } else { state = .loading }
         }
@@ -66,7 +65,7 @@ final class Lyrics {
                 if self.cache.count >= 50 { self.cache.removeAll() }
                 self.cache[key] = result
             }
-            withAnimation(Self.resize) { self.state = result }
+            withAnimation(.settle) { self.state = result }
         }
     }
 
@@ -76,7 +75,7 @@ final class Lyrics {
         let next = lines.lastIndex { $0.time <= at }
         let singing = next.map { at <= lines[$0].end } ?? true
         guard next != index || singing != isSinging else { return }
-        withAnimation(Self.resize) {
+        withAnimation(.settle) {
             index = next
             isSinging = singing
         }
@@ -220,12 +219,12 @@ struct LyricsView: View {
                 let active = synced ? player.lyrics.index ?? 0 : min(Int(player.position / max(track.duration, 1) * Double(lines.count)), lines.count - 1)
                 rows(lines, active: active, synced: synced)
                     .offset(y: Self.height * 0.38 - 19 - CGFloat(active) * 44)
-                    .animation(.spring(response: 0.5, dampingFraction: 0.75), value: active)
+                    .animation(.arrive, value: active)
                     .frame(height: Self.height, alignment: .top)
             }
         }
-        .transition(.opacity)
-        .animation(.easeOut(duration: 0.28), value: player.lyrics.state)
+        .transition(.blurReplace)
+        .animation(.fadeIn, value: player.lyrics.state)
         .frame(height: Self.height)
         .clipped()
         .mask(Self.mask)
@@ -288,9 +287,9 @@ private struct LyricRow: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .animation(.spring(response: 0.45, dampingFraction: 0.75), value: isActive)
-        .animation(.spring(response: 0.45, dampingFraction: 0.75), value: distance)
-        .onHover { inside in withAnimation(.easeOut(duration: 0.16)) { isHovered = inside } }
+        .animation(.arrive, value: isActive)
+        .animation(.arrive, value: distance)
+        .onHover { inside in withAnimation(.hover) { isHovered = inside } }
     }
 
     private var opacity: Double {

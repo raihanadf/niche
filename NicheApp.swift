@@ -169,7 +169,7 @@ final class LabState {
         }
         guard let art = IdleArt.load(target) else { return false }
         UserDefaults.standard.set(name, forKey: "idleImage")
-        withAnimation(.spring(Spring(duration: 0.5, bounce: 0.32), blendDuration: 0)) { idleArt = art }
+        withAnimation(.grow) { idleArt = art }
         return true
     }
 
@@ -181,7 +181,7 @@ final class LabState {
         guard let url = IdleArt.builtIn(name), let art = IdleArt.load(url) else { return }
         removeIdleCopy()
         UserDefaults.standard.set("builtin:\(name)", forKey: "idleImage")
-        withAnimation(.spring(Spring(duration: 0.5, bounce: 0.32), blendDuration: 0)) { idleArt = art }
+        withAnimation(.grow) { idleArt = art }
     }
 
     private func removeIdleCopy() {
@@ -193,7 +193,7 @@ final class LabState {
     func clearIdleImage() {
         removeIdleCopy()
         UserDefaults.standard.removeObject(forKey: "idleImage")
-        withAnimation(.spring(response: 0.45, dampingFraction: 0.95)) { idleArt = nil }
+        withAnimation(.settle) { idleArt = nil }
     }
     var showsAllAgents = false
     var hasOpenableContent: Bool { player.track != nil || !agents.isEmpty || peekFeature == .clipboard }
@@ -392,7 +392,7 @@ final class LabState {
 
     func setDropTarget(_ on: Bool) {
         guard on != isDropTarget else { return }
-        withAnimation(on ? .spring(Spring(duration: 0.5, bounce: 0.32), blendDuration: 0) : .spring(response: 0.45, dampingFraction: 0.95)) {
+        withAnimation(on ? .grow : .settle) {
             isDropTarget = on
         }
     }
@@ -400,7 +400,7 @@ final class LabState {
     func setAside(_ on: Bool) {
         guard on != isAside else { return }
         if on { setOpen(false) }
-        withAnimation(on ? .spring(response: 0.35, dampingFraction: 1) : .spring(Spring(duration: 0.5, bounce: 0.32), blendDuration: 0)) {
+        withAnimation(on ? .close : .grow) {
             isAside = on
         }
     }
@@ -419,7 +419,7 @@ final class LabState {
         unlockTask?.cancel()
         guard showLockIndicator else { return }
         setOpen(false)
-        withAnimation(.spring(Spring(duration: 0.4, bounce: 0.2), blendDuration: 0)) {
+        withAnimation(.arrive) {
             lockState = .locked
             lockShown = true
         }
@@ -434,7 +434,7 @@ final class LabState {
             withAnimation(.easeOut(duration: 0.3)) { self.lockShown = false }
             try? await Task.sleep(for: .seconds(0.3))
             guard !Task.isCancelled else { return }
-            withAnimation(.spring(response: 0.4, dampingFraction: 1)) { self.lockState = .none }
+            withAnimation(.settle) { self.lockState = .none }
         }
     }
 
@@ -484,7 +484,7 @@ struct NicheView: View {
                                         UsageStrip(accounts: lab.agents.usage.accounts, room: lab.activityRoom)
                                     }
                                     AgentSessionList(sessions: lab.agents.sessions, showsAll: lab.showsAllAgents, onToggleAll: {
-                                        withAnimation(.spring(Spring(duration: 0.4, bounce: 0.2), blendDuration: 0)) { lab.showsAllAgents.toggle() }
+                                        withAnimation(.arrive) { lab.showsAllAgents.toggle() }
                                     }) { session in
                                         lab.agents.focus(session)
                                         lab.setOpen(false)
@@ -506,22 +506,22 @@ struct NicheView: View {
                         .id(lab.openFeature)
                         .transition(.asymmetric(
                             insertion: AnyTransition(.blurReplace).combined(with: .offset(x: 14))
-                                .animation(.spring(Spring(duration: 0.4, bounce: 0.2), blendDuration: 0)),
+                                .animation(.arrive),
                             removal: AnyTransition(.blurReplace).combined(with: .offset(x: -14))
-                                .animation(.easeIn(duration: 0.14))))
+                                .animation(.exit)))
                     }
                         .frame(width: size.width + 2 * 16, height: size.height, alignment: .top)
                         .overlay(alignment: .top) { topRow }
                         .drawingGroup()
                         .blur(radius: c.isSharp ? 0 : 5)
-                        .transition(.asymmetric(insertion: .opacity.animation(.easeOut(duration: 0.2).delay(0.12)),
-                                                removal: .opacity.animation(.easeOut(duration: 0.1))))
+                        .transition(.asymmetric(insertion: .opacity.animation(.fadeIn.delay(0.12)),
+                                                removal: .opacity.animation(.fadeOut)))
                 } else if lab.isDropTarget {
                     ClipboardDropZone(item: lab.clipboard.dropping)
                         .padding(.top, LabState.hardwareNotch.height)
                         .frame(width: size.width, height: size.height, alignment: .top)
-                        .transition(.asymmetric(insertion: .opacity.animation(.easeOut(duration: 0.2).delay(0.12)),
-                                                removal: .opacity.animation(.easeOut(duration: 0.1))))
+                        .transition(.asymmetric(insertion: .opacity.animation(.fadeIn.delay(0.12)),
+                                                removal: .opacity.animation(.fadeOut)))
                 } else if lab.lockState != .none {
                     LockIndicator(state: lab.lockState, isShown: lab.lockShown)
                         .frame(width: LabState.closedSize(hasContent: true).width, height: LabState.hardwareNotch.height)
@@ -563,7 +563,7 @@ struct NicheView: View {
             }
             .modifier(NotchSquashModifier(controller: c))
             .offset(x: lab.closedOffset)
-            .animation(c.isCollapsing ? .spring(response: 0.38, dampingFraction: 0.95) : closedResize, value: lab.closedOffset)
+            .animation(c.isCollapsing ? .close : closedResize, value: lab.closedOffset)
             .scaleEffect(lab.isAside ? 0.6 : 1, anchor: .top)
             .blur(radius: lab.isAside ? 6 : 0)
             .opacity(lab.isAside ? 0 : 1)
@@ -585,7 +585,7 @@ struct NicheView: View {
                         c.stretch = max(-1, min(1, -value.translation.height / 60))
                     }
                     .onEnded { _ in
-                        withAnimation(.spring(response: 0.35, dampingFraction: 1.0, blendDuration: 0)) {
+                        withAnimation(.close) {
                             c.isPressed = false
                             c.stretch = 0
                         }
@@ -599,17 +599,17 @@ struct NicheView: View {
 
     private var closedResize: Animation {
         lab.hasClosedContent
-            ? .spring(Spring(duration: 0.5, bounce: 0.32), blendDuration: 0)
-            : .spring(response: 0.45, dampingFraction: 0.95)
+            ? .grow
+            : .settle
     }
 
     private static let activityTransition = AnyTransition.asymmetric(
-        insertion: AnyTransition(.blurReplace).animation(.spring(response: 0.35, dampingFraction: 0.9)),
+        insertion: AnyTransition(.blurReplace).animation(.arrive),
         removal: .identity)
 
     private static func closedContentTransition(afterClosing: Bool) -> AnyTransition {
-        .asymmetric(insertion: .opacity.animation(.easeOut(duration: 0.2).delay(afterClosing ? 0.25 : 0.05)),
-                    removal: .opacity.animation(.easeOut(duration: 0.1)))
+        .asymmetric(insertion: .opacity.animation(.fadeIn.delay(afterClosing ? 0.25 : 0.05)),
+                    removal: .opacity.animation(.fadeOut))
     }
 
     @ViewBuilder private var topRow: some View {
@@ -623,7 +623,7 @@ struct NicheView: View {
                 .transition(Self.activityTransition)
         } else {
             ears
-                .transition(.opacity.animation(.easeOut(duration: 0.2).delay(0.1)))
+                .transition(.opacity.animation(.fadeIn.delay(0.1)))
         }
     }
 
@@ -635,10 +635,10 @@ struct NicheView: View {
                 let stack = upcoming + [current]
                 Button {
                     hop = stack.first
-                    withAnimation(.spring(Spring(duration: 0.45, bounce: 0.3), blendDuration: 0)) { lab.switchFeature() }
+                    withAnimation(.arrive) { lab.switchFeature() }
                     Task {
                         try? await Task.sleep(for: .seconds(0.16))
-                        withAnimation(.spring(Spring(duration: 0.35, bounce: 0.25), blendDuration: 0)) { hop = nil }
+                        withAnimation(.glyph) { hop = nil }
                     }
                 } label: {
                     ZStack {
@@ -653,7 +653,7 @@ struct NicheView: View {
                         }
                     }
                     .frame(width: 22 + 14 * CGFloat(stack.count - 1), height: 22, alignment: .trailing)
-                    .animation(.spring(Spring(duration: 0.45, bounce: 0.3), blendDuration: 0), value: stack)
+                    .animation(.arrive, value: stack)
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -687,8 +687,8 @@ struct ClosedContentFade: ViewModifier {
             .opacity(isShown ? 1 : 0)
             .scaleEffect(isShown ? 1 : 0.75)
             .blur(radius: isShown ? 0 : 4)
-            .animation(isShown ? .spring(response: 0.45, dampingFraction: 0.9).delay(0.18)
-                               : .spring(response: 0.45, dampingFraction: 0.95),
+            .animation(isShown ? .arrive.delay(0.18)
+                               : .settle,
                        value: isShown)
     }
 }

@@ -338,11 +338,11 @@ struct ArtworkView: View {
                 .opacity(outgoing == nil ? 1 : 0)
         }
         .scaleEffect(isPlaying ? 1 : 0.82)
-        .animation(.spring(Spring(duration: 0.5, bounce: 0.3), blendDuration: 0), value: isPlaying)
+        .animation(.grow, value: isPlaying)
         .onAppear { current = track }
         .onChange(of: track) {
             guard let current, current.isSameSong(as: track), outgoing == nil else { return }
-            withAnimation(.easeOut(duration: 0.25)) { self.current = track }
+            withAnimation(.leave) { self.current = track }
         }
         .onChange(of: token) {
             outgoing = current
@@ -606,7 +606,7 @@ struct VolumeSlider: View {
                 Capsule().fill(.white.opacity(0.16))
                 Capsule().fill(.white.opacity(0.55))
                     .frame(width: proxy.size.width * min(max(level, 0), 1))
-                    .animation(.smooth(duration: 0.2), value: level)
+                    .animation(.level, value: level)
             }
             .contentShape(Rectangle())
             .gesture(DragGesture(minimumDistance: 0).onChanged { drag in
@@ -670,12 +670,12 @@ struct MusicExpandedView: View {
                     .frame(height: 16)
                 }
                 .frame(width: textWidth, alignment: .leading)
-                .animation(.spring(Spring(duration: 0.38, bounce: 0.25), blendDuration: 0), value: player.songChangeToken)
+                .animation(.arrive, value: player.songChangeToken)
                 Spacer(minLength: 0)
                 WaveformView(track: track, spectrum: player.spectrum, isPlaying: player.isPlaying, barWidth: 2.5, maxHeight: 14)
                 if player.allowsLyrics {
                     Button {
-                        withAnimation(.spring(Spring(duration: 0.4, bounce: 0.2), blendDuration: 0)) { player.isShowingLyrics.toggle() }
+                        withAnimation(.arrive) { player.isShowingLyrics.toggle() }
                     } label: {
                         Image(systemName: player.isShowingLyrics ? "quote.bubble.fill" : "quote.bubble")
                             .font(.system(size: 13, weight: .medium))
@@ -710,19 +710,19 @@ struct MusicExpandedView: View {
                     Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
                         .font(.system(size: 27, weight: .medium))
                         .contentTransition(.symbolEffect(.replace.downUp.wholeSymbol))
-                        .animation(.spring(Spring(duration: 0.35, bounce: 0.3), blendDuration: 0), value: player.isPlaying)
+                        .animation(.glyph, value: player.isPlaying)
                 }
                 ControlButton(action: { skips.forward += 1; player.skip(forward: true) }) {
                     SkipGlyph(forward: true, trigger: skips.forward)
                 }
                 ControlButton(isActive: output.isShowingVolume, action: {
-                    withAnimation(.spring(Spring(duration: 0.4, bounce: 0.2), blendDuration: 0)) { output.isShowingVolume.toggle() }
+                    withAnimation(.arrive) { output.isShowingVolume.toggle() }
                 }) {
                     Image(systemName: output.symbol)
                         .font(.system(size: 17, weight: .medium))
                         .opacity(output.isShowingVolume ? 1 : 0.5)
                         .contentTransition(.symbolEffect(.replace))
-                        .animation(.spring(Spring(duration: 0.35, bounce: 0.3), blendDuration: 0), value: output.symbol)
+                        .animation(.glyph, value: output.symbol)
                 }
                 .disabled(!output.canSetVolume)
             }
@@ -777,7 +777,7 @@ private struct ControlButton<Label: View>: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(PressSquash())
-        .onHover { inside in withAnimation(.easeOut(duration: 0.15)) { isHovered = inside } }
+        .onHover { inside in withAnimation(.hover) { isHovered = inside } }
         .frame(maxWidth: .infinity)
     }
 }
@@ -795,7 +795,7 @@ private struct ShuffleGlyph: View {
                 .offset(y: 9)
         }
         .opacity(0.5)
-        .animation(.spring(Spring(duration: 0.3, bounce: 0.3), blendDuration: 0), value: isOn)
+        .animation(.glyph, value: isOn)
     }
 }
 
@@ -827,7 +827,7 @@ private struct PressSquash: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .scaleEffect(configuration.isPressed ? 0.92 : 1)
-            .animation(.spring(response: 0.25, dampingFraction: 0.6), value: configuration.isPressed)
+            .animation(.press, value: configuration.isPressed)
     }
 }
 

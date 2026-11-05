@@ -494,7 +494,7 @@ final class LiveActivityCenter {
 
     private func show(_ activity: Activity, for seconds: Double) {
         let animation: Animation = current?.kind == activity.kind
-            ? .smooth(duration: 0.25) : .spring(Spring(duration: 0.4, bounce: 0.25), blendDuration: 0)
+            ? .level : .arrive
         withAnimation(animation) {
             current = activity
             isShowing = true
@@ -509,11 +509,11 @@ final class LiveActivityCenter {
 
     private func hide() {
         hideTask?.cancel()
-        withAnimation(.easeOut(duration: 0.25)) { isShowing = false }
+        withAnimation(.leave) { isShowing = false }
         hideTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(0.25))
             guard !Task.isCancelled, let self else { return }
-            withAnimation(.spring(response: 0.45, dampingFraction: 0.95)) { self.current = nil }
+            withAnimation(.settle) { self.current = nil }
         }
     }
 }
@@ -667,7 +667,7 @@ private struct SunGlyph: View {
         }
         .foregroundStyle(.yellow)
         .frame(width: 16, height: 16)
-        .animation(.smooth(duration: 0.25), value: level)
+        .animation(.level, value: level)
     }
 }
 
@@ -682,6 +682,6 @@ private struct LevelBar: View {
                     .frame(width: Self.width * min(max(level, 0), 1))
             }
             .frame(width: Self.width, height: 5)
-            .animation(.smooth(duration: 0.25), value: level)
+            .animation(.level, value: level)
     }
 }

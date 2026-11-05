@@ -160,7 +160,7 @@ final class ClipboardHistory {
     }
 
     private func insert(_ item: Item) {
-        withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+        withAnimation(.arrive) {
             items.removeAll { $0.signature == item.signature }
             items.insert(item, at: 0)
             if items.count > limit { items.removeLast(items.count - limit) }
@@ -183,7 +183,7 @@ final class ClipboardHistory {
         }
         lastChange = board.changeCount
         marked.removeAll()
-        withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+        withAnimation(.arrive) {
             items.removeAll { item in chosen.contains { $0.id == item.id } }
             items.insert(contentsOf: chosen, at: 0)
         }
@@ -206,7 +206,7 @@ final class ClipboardHistory {
     }
 
     func remove(_ item: Item) {
-        withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+        withAnimation(.arrive) {
             items.removeAll { $0.id == item.id }
             marked.removeAll { $0 == item.id }
             selection = min(selection, max(items.count - 1, 0))
@@ -214,7 +214,7 @@ final class ClipboardHistory {
     }
 
     func clear() {
-        withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+        withAnimation(.settle) {
             items.removeAll()
             marked.removeAll()
         }
@@ -382,10 +382,10 @@ struct ClipboardView: View {
             if let focus {
                 ClipCaption(item: focus, history: history) { onPick(focus) }
                     .id(focus.id)
-                    .transition(.opacity)
+                    .transition(.blurReplace)
             }
         }
-        .animation(.easeOut(duration: 0.15), value: focus?.id)
+        .animation(.hover, value: focus?.id)
     }
 }
 
@@ -432,7 +432,7 @@ private struct ClipTile: View {
                         .frame(width: 13, height: 13)
                         .background(Circle().fill(.white.opacity(0.9)))
                         .padding(4)
-                        .transition(.scale.combined(with: .opacity))
+                        .transition(.scale(scale: 0.5).combined(with: .opacity))
                 }
             }
             .overlay(alignment: .topTrailing) {
@@ -450,9 +450,9 @@ private struct ClipTile: View {
                 }
             }
             .scaleEffect(isHovered || isSelected || mark != nil ? 1.05 : 1)
-            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isHovered)
-            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isSelected)
-            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: mark)
+            .animation(.lift, value: isHovered)
+            .animation(.lift, value: isSelected)
+            .animation(.lift, value: mark)
             .contentShape(Rectangle())
     }
 

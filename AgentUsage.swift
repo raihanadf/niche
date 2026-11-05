@@ -33,7 +33,7 @@ final class AgentUsage {
             let kept = accounts.filter { old in kinds.contains(old.kind) && !fresh.contains { $0.id == old.id } }
             let merged = (fresh + kept).sorted { ($0.kind == .omp ? 1 : 0, $0.id) < ($1.kind == .omp ? 1 : 0, $1.id) }
             guard merged != accounts else { return }
-            withAnimation(.spring(Spring(duration: 0.35, bounce: 0.2), blendDuration: 0)) { accounts = merged }
+            withAnimation(.arrive) { accounts = merged }
         }
     }
 
@@ -207,7 +207,7 @@ struct UsageStrip: View {
             Spacer(minLength: 0)
         }
         .frame(height: 56)
-        .animation(.spring(Spring(duration: 0.38, bounce: 0.25), blendDuration: 0), value: key)
+        .animation(.arrive, value: key)
     }
 
     private func chips(_ shown: [UsageAccount], idle: [UsageAccount], named: Bool, percent: Bool) -> some View {
@@ -290,7 +290,7 @@ private struct UsageChip<Content: View>: View {
             .padding(.trailing, 8)
             .frame(height: 24)
             .background(Capsule().fill(.white.opacity(isHovered ? 0.13 : 0.06)))
-            .animation(.easeOut(duration: 0.12), value: isHovered)
+            .animation(.hover, value: isHovered)
     }
 }
 

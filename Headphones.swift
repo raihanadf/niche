@@ -261,7 +261,7 @@ struct BatteryRing: View {
             .frame(width: 10, height: 10)
             .phaseAnimator(isLow ? [1.0, 0.35] : [1.0]) { ring, opacity in
                 ring.opacity(opacity)
-            } animation: { _ in .easeInOut(duration: 0.7) }
+            } animation: { _ in .pulse }
             Text("\(Int((level * 100).rounded()))%")
                 .font(.system(size: 11.5, weight: .semibold).monospacedDigit())
                 .foregroundStyle(isLow ? tint : .white.opacity(0.85))
@@ -270,7 +270,7 @@ struct BatteryRing: View {
         .onAppear {
             withAnimation(.spring(Spring(duration: 0.6, bounce: 0.1), blendDuration: 0).delay(0.15)) { shown = level }
         }
-        .onChange(of: level) { withAnimation(.smooth(duration: 0.25)) { shown = level } }
+        .onChange(of: level) { withAnimation(.level) { shown = level } }
     }
 }
 
@@ -289,7 +289,7 @@ struct ListeningModeGlyph: View {
             }
             .id(mode)
             .transition(.blurReplace)
-            .animation(.spring(Spring(duration: 0.35, bounce: 0.3), blendDuration: 0), value: mode)
+            .animation(.glyph, value: mode)
             .frame(width: 20, height: 18)
             .onAppear { plays += 1 }
             .onChange(of: mode) { plays += 1 }

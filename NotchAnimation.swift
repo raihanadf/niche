@@ -1,6 +1,24 @@
 import SwiftUI
 import Observation
 
+extension Animation {
+    static let grow = Animation.spring(Spring(duration: 0.5, bounce: 0.32), blendDuration: 0)
+    static let arrive = Animation.spring(Spring(duration: 0.4, bounce: 0.25), blendDuration: 0)
+    static let glyph = Animation.spring(Spring(duration: 0.35, bounce: 0.3), blendDuration: 0)
+    static let settle = Animation.spring(response: 0.45, dampingFraction: 0.95)
+    static let close = Animation.spring(response: 0.38, dampingFraction: 0.95)
+    static let sharpen = Animation.spring(response: 0.35, dampingFraction: 0.9)
+    static let press = Animation.spring(response: 0.25, dampingFraction: 0.6)
+    static let lift = Animation.spring(response: 0.3, dampingFraction: 0.7)
+    static let hover = Animation.easeOut(duration: 0.15)
+    static let level = Animation.smooth(duration: 0.25)
+    static let fadeIn = Animation.easeOut(duration: 0.2)
+    static let fadeOut = Animation.easeOut(duration: 0.1)
+    static let leave = Animation.easeOut(duration: 0.25)
+    static let exit = Animation.easeIn(duration: 0.14)
+    static let pulse = Animation.easeInOut(duration: 0.7)
+}
+
 @MainActor
 @Observable
 final class NotchController {
@@ -20,15 +38,15 @@ final class NotchController {
         let current = generation
         roundTask?.cancel()
         isCollapsing = false
-        withAnimation(.spring(Spring(duration: 0.5, bounce: 0.32), blendDuration: 0)) {
+        withAnimation(.grow) {
             isPressed = false
             isExpanded = true
         }
-        withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) { isSharp = true }
+        withAnimation(.sharpen) { isSharp = true }
         roundTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(0.04))
             guard let self, !Task.isCancelled, self.generation == current else { return }
-            withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) { self.isRounded = true }
+            withAnimation(.sharpen) { self.isRounded = true }
         }
     }
 
@@ -37,7 +55,7 @@ final class NotchController {
         let current = generation
         roundTask?.cancel()
         isCollapsing = true
-        withAnimation(.spring(response: 0.38, dampingFraction: 0.95), completionCriteria: .logicallyComplete) {
+        withAnimation(.close, completionCriteria: .logicallyComplete) {
             isExpanded = false
             isRounded = false
             isSharp = false
