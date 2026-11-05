@@ -30,6 +30,11 @@ final class MusicPlayer {
     private(set) var isShuffled = false
     private(set) var position: Double = 0
     private(set) var songChangeToken = 0
+    var currentPosition: Double {
+        guard let track else { return position }
+        let live = isPlaying ? Date().timeIntervalSince(timestamp) * rate : 0
+        return min(max(elapsedAtTimestamp + live, 0), track.duration)
+    }
     var allowsAnyApp: Bool {
         didSet {
             UserDefaults.standard.set(allowsAnyApp, forKey: "musicAnyApp")
@@ -78,7 +83,12 @@ final class MusicPlayer {
         self.send = unsafeBitCast(send, to: (@convention(c) (Int, AnyObject?) -> Bool).self)
         self.setElapsed = unsafeBitCast(setElapsed, to: (@convention(c) (Double) -> Void).self)
         self.setShuffle = unsafeBitCast(setShuffle, to: (@convention(c) (Int) -> Void).self)
-        output.onDeviceChange = { [weak self] in self?.spectrum.refresh() }
+        output.onDeviceChange = { [weak self] in
+            guard let self else { return }
+            self.spectrum.refresh()
+            self.lyrics.updateTransport(self.output.transportType)
+        }
+        lyrics.updateTransport(output.transportType)
     }
 
     func start() {
@@ -172,11 +182,10 @@ final class MusicPlayer {
     }
 
     func tick() {
-        guard let track else { return }
-        let live = isPlaying ? Date().timeIntervalSince(timestamp) * rate : 0
-        let next = min(max(elapsedAtTimestamp + live, 0), track.duration)
+        guard track != nil else { return }
+        let next = currentPosition
         if next != position { position = next }
-        if isShowingLyrics { lyrics.sync(position) }
+        if isShowingLyrics { lyrics.sync(next) }
     }
 
     private func followLyrics() {
@@ -189,7 +198,7 @@ final class MusicPlayer {
         let timer = Timer(timeInterval: 0.1, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self else { return }
-                self.lyrics.sync(self.elapsedAtTimestamp + Date().timeIntervalSince(self.timestamp) * self.rate)
+                self.lyrics.sync(self.currentPosition)
             }
         }
         RunLoop.main.add(timer, forMode: .common)
@@ -878,12 +887,7 @@ struct MusicClosedView: View {
 
     private func lyric(_ text: String, twoRows: Bool) -> some View {
         ZStack {
-            Text(text)
-                .font(.system(size: 11.5, weight: .semibold, design: .rounded))
-                .foregroundStyle(.white)
-                .multilineTextAlignment(twoRows ? .leading : .center)
-                .lineLimit(twoRows ? 2 : 1)
-                .minimumScaleFactor(0.7)
+            ClosedLyric(player: player, text: text, twoRows: twoRows)
                 .id(text)
                 .transition(.blurReplace(.downUp))
         }

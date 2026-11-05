@@ -66,6 +66,8 @@ final class LiveActivityCenter {
     @ObservationIgnored private var volumeDevice = AudioObjectID(kAudioObjectUnknown)
     @ObservationIgnored private var volumeSettable = false
     @ObservationIgnored private var volumeMutable = false
+    @ObservationIgnored private var isBluetoothOutput = false
+    @ObservationIgnored private var lastVolumeKeyAt = 0.0
     @ObservationIgnored private let mediaQueue = DispatchQueue(label: "niche.mediakeys")
     @ObservationIgnored private var lastVolume: (Float, Bool)?
     @ObservationIgnored var showsVolume: () -> Bool = { true }
@@ -158,6 +160,8 @@ final class LiveActivityCenter {
         lastFocus = nil
         lastBattery = nil
         lastVolume = nil
+        isBluetoothOutput = false
+        lastVolumeKeyAt = 0
         if let keyTapSource {
             CFRunLoopRemoveSource(CFRunLoopGetMain(), keyTapSource, .commonModes)
             self.keyTapSource = nil
@@ -284,7 +288,13 @@ final class LiveActivityCenter {
         let step: Float = fine ? 1.0 / 64 : 1.0 / 16
         if !isVolume && isDown { brightnessKeyAt = Date() }
         guard replacesSystemHUD else { return false }
+        if isVolume && isBluetoothOutput { return false }
         guard isDown else { return true }
+        if isVolume {
+            let now = CACurrentMediaTime()
+            guard now - lastVolumeKeyAt >= 0.04 else { return true }
+            lastVolumeKeyAt = now
+        }
         if !isVolume {
             guard brightnessRegistered else { return false }
             let smooth = smoothBrightness
@@ -319,12 +329,24 @@ final class LiveActivityCenter {
             NSLog("Niche could not read the output volume")
             return
         }
-        level = min(max(((level + (key == .volumeUp ? step : -step)) / step).rounded() * step, 0), 1)
+        let target = key == .volumeUp ? level + step : level - step
+        var newLevel = min(max((target / step).rounded() * step, 0), 1)
+        guard abs(newLevel - level) > 0.0001 || (hasMute && muted != 0 && key == .volumeUp) else { return }
         if hasMute && muted != 0 && key == .volumeUp {
             muted = 0
             AudioObjectSetPropertyData(device, &mute, 0, nil, UInt32(MemoryLayout<UInt32>.size), &muted)
         }
-        AudioObjectSetPropertyData(device, &volume, 0, nil, size, &level)
+        AudioObjectSetPropertyData(device, &volume, 0, nil, size, &newLevel)
+    }
+
+    nonisolated private static func isBluetooth(_ device: AudioObjectID) -> Bool {
+        var transport = UInt32(0)
+        var size = UInt32(MemoryLayout<UInt32>.size)
+        var address = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyTransportType,
+                                                 mScope: kAudioObjectPropertyScopeGlobal,
+                                                 mElement: kAudioObjectPropertyElementMain)
+        guard AudioObjectGetPropertyData(device, &address, 0, nil, &size, &transport) == noErr else { return false }
+        return transport == kAudioDeviceTransportTypeBluetooth || transport == kAudioDeviceTransportTypeBluetoothLE
     }
 
     private func readCaps() {
@@ -451,6 +473,7 @@ final class LiveActivityCenter {
             NSLog("Niche cannot read the default output device")
             return
         }
+        isBluetoothOutput = Self.isBluetooth(volumeDevice)
         var volume = AudioObjectPropertyAddress(mSelector: kAudioHardwareServiceDeviceProperty_VirtualMainVolume,
                                                 mScope: kAudioDevicePropertyScopeOutput, mElement: kAudioObjectPropertyElementMain)
         var mute = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyMute,

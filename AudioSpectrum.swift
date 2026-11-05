@@ -34,7 +34,7 @@ final class AudioSpectrum {
             do {
                 try session.start(pid: target) { [weak self] levels in
                     Task { @MainActor in
-                        guard let self, self.pid == target, zip(self.levels, levels).contains(where: { abs($0 - $1) >= 0.008 }) else { return }
+                        guard let self, self.pid == target, self.isEnabled, zip(self.levels, levels).contains(where: { abs($0 - $1) >= 0.008 }) else { return }
                         self.levels = levels
                     }
                 }
@@ -46,7 +46,7 @@ final class AudioSpectrum {
     }
 
     func refresh() {
-        let target = pid
+        let target = requestedPID
         guard target > 0 else { return }
         pid = 0
         follow(pid: target)
