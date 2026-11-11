@@ -151,6 +151,9 @@ final class MusicPlayer {
         clearTask?.cancel()
         clearTask = nil
         let isNewSong = lastSong.map { !$0.isSameSong(as: next) } ?? false
+        if isNewSong {
+            lyrics.updateTransport(output.transportType)
+        }
         if isPlaying && !snapshot.isPlaying && !isNewSong {
             let live = (CACurrentMediaTime() - baseMonotonic) * rate
             elapsedAtTimestamp = max(snapshot.elapsed, min(elapsedAtTimestamp + live, next.duration))
@@ -169,8 +172,6 @@ final class MusicPlayer {
         isPlaying = snapshot.isPlaying
         if let shuffle = snapshot.shuffleMode { isShuffled = shuffle != 1 }
         spectrum.follow(pid: snapshot.isPlaying ? snapshot.pid : nil)
-
-        if isNewSong && isShowingLyrics { lyrics.load(next) }
         if isNewSong && next.artwork == nil {
             if pendingSong.map({ !$0.isSameSong(as: next) }) ?? true {
                 pendingDeadline?.cancel()
@@ -202,7 +203,7 @@ final class MusicPlayer {
         let live = isPlaying ? (CACurrentMediaTime() - baseMonotonic) * rate : 0
         let next = min(max(elapsedAtTimestamp + live, 0), track.duration)
         if next != position { position = next }
-        if isShowingLyrics { lyrics.sync(next) }
+        if isShowingLyrics { lyrics.sync(currentPosition) }
     }
 
     private func followLyrics() {

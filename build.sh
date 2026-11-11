@@ -25,7 +25,7 @@ fi
 codesign --force --sign "$sign_identity" "$framework"
 
 xcrun swiftc -Osize -wmo -parse-as-library -target arm64-apple-macos15.0 -Xlinker -dead_strip \
-    -o "$app/Contents/MacOS/Niche" NotchAnimation.swift AudioSpectrum.swift LyricsModel.swift LyricsNormalization.swift LRCLIBClient.swift SecondaryLyricsClients.swift LyricsService.swift Lyrics.swift LyricsViews.swift MusicLab.swift OutputDevice.swift Headphones.swift AgentSessions.swift AgentUsage.swift LiveActivities.swift Updater.swift Clipboard.swift IdleArt.swift Onboarding.swift SettingsView.swift NicheApp.swift
+    -o "$app/Contents/MacOS/Niche" NotchAnimation.swift AudioSpectrum.swift LyricsModel.swift LyricsNormalization.swift LyricsWordParser.swift YRCParser.swift LyricsCache.swift LRCLIBClient.swift SecondaryLyricsClients.swift AsianLyricsClients.swift WordLyricsClients.swift UnisonClient.swift YouTubeMusicClient.swift LyricsService.swift Lyrics.swift LyricsViews.swift ClosedLyricsView.swift MusicLab.swift OutputDevice.swift Headphones.swift AgentSessions.swift AgentUsage.swift LiveActivities.swift Updater.swift Clipboard.swift IdleArt.swift Onboarding.swift SettingsView.swift NicheApp.swift
 strip -x "$app/Contents/MacOS/Niche"
 
 xcrun actool AppIcon.icon --compile "$app/Contents/Resources" --platform macosx --minimum-deployment-target 15.0 \

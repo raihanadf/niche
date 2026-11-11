@@ -34,18 +34,29 @@ enum LyricsNormalization {
         return result.isEmpty ? title.trimmingCharacters(in: trailingPunctuation) : result
     }
 
-    private static func artistVariants(_ artist: String) -> [String] {
+    static func artistVariants(_ artist: String) -> [String] {
+        var raw = artist.trimmingCharacters(in: .whitespaces)
+        for suffix in [" - Topic", "VEVO"] where raw.hasSuffix(suffix) {
+            raw = String(raw.dropLast(suffix.count))
+        }
+        raw = raw.trimmingCharacters(in: .whitespaces)
+        guard !raw.isEmpty else { return [] }
+
         var list: [String] = []
+
         func add(_ s: String) {
             let t = s.trimmingCharacters(in: trailingPunctuation)
             guard !t.isEmpty, !list.contains(t) else { return }
             list.append(t)
         }
 
-        if artist.hasPrefix(".") { add(String(artist.dropFirst())) }
-        add(artist)
+        if raw.hasPrefix(".") {
+            add(String(raw.dropFirst()))
+        }
+        add(raw)
+
         let separators = #/\s*(?:,|&|\band\b|\bx\b|\bfeat\.?\b|\bft\.?\b|\bwith\b)\s*/#.ignoresCase()
-        let parts = artist.split(separator: separators).map(String.init)
+        let parts = raw.split(separator: separators).map(String.init)
         if parts.count > 1 {
             for part in parts {
                 if part.hasPrefix(".") { add(String(part.dropFirst())) }

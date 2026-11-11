@@ -300,7 +300,7 @@ final class LiveActivityCenter {
         let step: Float = fine ? 1.0 / 64 : 1.0 / 16
         if !isVolume && isDown { brightnessKeyAt = Date() }
         guard replacesSystemHUD else { return false }
-        if isVolume && isBluetoothOutput { return false }
+        if isVolume && (isBluetoothOutput || Self.isBluetooth(volumeDevice)) { return false }
         guard isDown else { return true }
         if isVolume {
             let now = CACurrentMediaTime()
