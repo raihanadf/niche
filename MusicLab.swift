@@ -1,6 +1,7 @@
 import AppKit
 import CoreImage
 import ImageIO
+import QuartzCore
 import SwiftUI
 
 struct Track: Equatable {
@@ -32,8 +33,9 @@ final class MusicPlayer {
     private(set) var songChangeToken = 0
     var currentPosition: Double {
         guard let track, isPlaying else { return position }
-        let live = Date().timeIntervalSince(timestamp) * rate
-        return min(max(elapsedAtTimestamp + live, 0), track.duration)
+        let live = (CACurrentMediaTime() - baseMonotonic) * rate
+        let raw = max(elapsedAtTimestamp + live, 0)
+        return track.duration > 0 ? min(raw, track.duration) : raw
     }
     var allowsAnyApp: Bool {
         didSet {
@@ -48,15 +50,18 @@ final class MusicPlayer {
         didSet {
             UserDefaults.standard.set(allowsLyrics, forKey: "musicLyrics")
             if !allowsLyrics { isShowingLyrics = false }
+            followLyrics()
         }
     }
     var isShowingLyrics = false {
-        didSet { followLyrics() }
+        didSet {
+            UserDefaults.standard.set(isShowingLyrics, forKey: "musicShowingLyrics")
+            followLyrics()
+        }
     }
 
-    @ObservationIgnored var playbackTimer: Timer?
     @ObservationIgnored private var elapsedAtTimestamp: Double = 0
-    @ObservationIgnored private var timestamp = Date()
+    @ObservationIgnored private var baseMonotonic: Double = CACurrentMediaTime()
     @ObservationIgnored private var rate: Double = 1
     @ObservationIgnored private var lyricsTimer: Timer?
     @ObservationIgnored private var pendingSong: Track?
@@ -72,9 +77,11 @@ final class MusicPlayer {
     private static let musicApps: Set<String> = ["com.apple.Music", "com.spotify.client"]
 
     init() {
-        UserDefaults.standard.register(defaults: ["musicAnyApp": false, "musicLyrics": true])
+        UserDefaults.standard.register(defaults: ["musicAnyApp": false, "musicLyrics": true, "musicShowingLyrics": true])
         allowsAnyApp = UserDefaults.standard.bool(forKey: "musicAnyApp")
-        allowsLyrics = UserDefaults.standard.bool(forKey: "musicLyrics")
+        let lyricsAllowed = UserDefaults.standard.bool(forKey: "musicLyrics")
+        allowsLyrics = lyricsAllowed
+        isShowingLyrics = lyricsAllowed && UserDefaults.standard.bool(forKey: "musicShowingLyrics")
         guard let handle = dlopen("/System/Library/PrivateFrameworks/MediaRemote.framework/MediaRemote", RTLD_NOW),
               let send = dlsym(handle, "MRMediaRemoteSendCommand"),
               let setElapsed = dlsym(handle, "MRMediaRemoteSetElapsedTime"),
@@ -90,6 +97,7 @@ final class MusicPlayer {
             self.lyrics.updateTransport(self.output.transportType)
         }
         lyrics.updateTransport(output.transportType)
+        lyrics.positionProvider = { [weak self] in self?.currentPosition ?? 0 }
     }
 
     func start() {
@@ -147,11 +155,18 @@ final class MusicPlayer {
             lyrics.updateTransport(output.transportType)
         }
         if isPlaying && !snapshot.isPlaying && !isNewSong {
-            elapsedAtTimestamp = max(snapshot.elapsed, min(elapsedAtTimestamp + Date().timeIntervalSince(timestamp) * rate, next.duration))
-            timestamp = Date()
+            let live = (CACurrentMediaTime() - baseMonotonic) * rate
+            elapsedAtTimestamp = max(snapshot.elapsed, min(elapsedAtTimestamp + live, next.duration))
+            baseMonotonic = CACurrentMediaTime()
+        } else if snapshot.isPlaying {
+            let age = max(0, Date().timeIntervalSince(snapshot.timestamp))
+            let effectiveRate = snapshot.rate > 0 ? snapshot.rate : 1.0
+            let extrapolated = snapshot.elapsed + age * effectiveRate
+            elapsedAtTimestamp = next.duration > 0 ? min(extrapolated, next.duration) : extrapolated
+            baseMonotonic = CACurrentMediaTime()
         } else {
             elapsedAtTimestamp = snapshot.elapsed
-            timestamp = snapshot.timestamp
+            baseMonotonic = CACurrentMediaTime()
         }
         rate = snapshot.rate
         isPlaying = snapshot.isPlaying
@@ -186,7 +201,7 @@ final class MusicPlayer {
 
     func tick() {
         guard let track else { return }
-        let live = isPlaying ? Date().timeIntervalSince(timestamp) * rate : 0
+        let live = isPlaying ? (CACurrentMediaTime() - baseMonotonic) * rate : 0
         let next = min(max(elapsedAtTimestamp + live, 0), track.duration)
         if next != position { position = next }
         if isShowingLyrics { lyrics.sync(currentPosition) }
@@ -194,20 +209,15 @@ final class MusicPlayer {
 
     private func followLyrics() {
         lyrics.load(isShowingLyrics ? track : nil)
-        guard playbackTimer == nil else {
-            lyricsTimer?.invalidate()
-            lyricsTimer = nil
-            return
-        }
         let follow = isShowingLyrics && isPlaying
         guard follow != (lyricsTimer != nil) else { return }
         lyricsTimer?.invalidate()
         lyricsTimer = nil
         guard follow else { return }
-        let timer = Timer(timeInterval: 0.05, repeats: true) { [weak self] _ in
+        let timer = Timer(timeInterval: 0.033, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
-                guard let self else { return }
-                self.tick()
+                guard let self, self.isShowingLyrics else { return }
+                self.lyrics.sync(self.currentPosition)
             }
         }
         RunLoop.main.add(timer, forMode: .common)
@@ -222,7 +232,7 @@ final class MusicPlayer {
         let target = track.duration * min(max(fraction, 0), 1)
         setElapsed(target)
         elapsedAtTimestamp = target
-        timestamp = Date()
+        baseMonotonic = CACurrentMediaTime()
         tick()
     }
 
@@ -859,7 +869,6 @@ struct MusicClosedView: View {
         let shown = player.track ?? lastTrack
         let line = player.isShowingLyrics ? player.lyrics.line : ""
         let underNotch = lab.usesLyricsShelf && !line.isEmpty
-        let twoRows = lab.hasTwoLineLyrics
 
         VStack(spacing: 0) {
             if let track = shown {
@@ -872,7 +881,8 @@ struct MusicClosedView: View {
                     if line.isEmpty || underNotch {
                         Spacer(minLength: 0)
                     } else {
-                        lyric(line, twoRows: twoRows)
+                        lyric(line)
+                            .padding(.horizontal, ClosedLyricsLayout.islandHorizontalPadding)
                     }
                     ClosedWaveform(track: track, spectrum: player.spectrum, isPlaying: player.isPlaying)
                         .padding(.trailing, 9)
@@ -881,8 +891,8 @@ struct MusicClosedView: View {
                 .frame(height: LabState.hardwareNotch.height + (lab.usesLyricsShelf ? 0 : lab.closedLyricsHeight))
 
                 if underNotch {
-                    lyric(line, twoRows: twoRows)
-                        .padding(.horizontal, 10)
+                    lyric(line)
+                        .padding(.horizontal, ClosedLyricsLayout.shelfHorizontalPadding)
                         .frame(height: lab.closedLyricsHeight)
                         .transition(.opacity.combined(with: .move(edge: .top)))
                 }
@@ -894,14 +904,22 @@ struct MusicClosedView: View {
         }
     }
 
-    private func lyric(_ line: String, twoRows: Bool) -> some View {
-        ZStack {
-            ClosedKaraokeLyricsView(player: player, line: line, twoRows: twoRows)
-                .id(line)
-                .transition(.blurReplace(.downUp))
+    private func lyric(_ line: String) -> some View {
+        let primaryID = "\(player.lyrics.activeLine?.id ?? -1):\(line)"
+        let frameHeight = ClosedLyricsLayout.lyricFrameHeight(for: lab.closedLyricsMetrics)
+        return ZStack {
+            ClosedKaraokeLyricsView(
+                player: player,
+                line: line,
+                activeLine: player.lyrics.activeLine
+            )
+            .id(primaryID)
+            .transition(.blurReplace(.downUp))
         }
-        .frame(maxWidth: .infinity, alignment: twoRows ? .leading : .center)
-        .frame(height: twoRows ? 30 : 18)
+        .animation(.spring(response: 0.25, dampingFraction: 0.90), value: primaryID)
+        .frame(maxWidth: .infinity, alignment: .center)
+        .frame(height: frameHeight)
         .clipped()
+        .animation(.spring(response: 0.45, dampingFraction: 0.95), value: frameHeight)
     }
 }

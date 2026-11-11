@@ -93,7 +93,7 @@ final class LabState {
         self.showOmp = defaults.bool(forKey: "showOmp")
         self.showLockIndicator = defaults.bool(forKey: "showLockIndicator")
         self.hideInFullscreen = defaults.bool(forKey: "hideInFullscreen")
-        self.notchStyle = NotchStyle(rawValue: defaults.string(forKey: "notchStyle")!)!
+        self.notchStyle = defaults.string(forKey: "notchStyle").flatMap(NotchStyle.init(rawValue:)) ?? .island
         Self.style = notchStyle
         player.spectrum.isEnabled = liveVisualizer
         applyAgentSettings()
@@ -239,13 +239,27 @@ final class LabState {
 
     var usesLyricsShelf: Bool { Self.hasNotch || notchStyle == .notch }
 
-    var closedLyricsWidth: CGFloat { usesLyricsShelf ? Self.closedSize(hasContent: true).width - 20 : 160 }
+    private var closedMusicIslandHalfRoom: CGFloat {
+        ClosedLyricsLayout.islandHalfRoom(lineWidth: player.lyrics.lineWidth, notchWidth: Self.hardwareNotch.width)
+    }
 
-    var hasTwoLineLyrics: Bool { player.isShowingLyrics && player.lyrics.lineWidth > closedLyricsWidth }
+    var closedLyricsMetrics: ClosedLyricsLayout.Metrics {
+        guard player.isShowingLyrics else { return .empty }
+        let width = ClosedLyricsLayout.availableWidth(
+            usesShelf: usesLyricsShelf,
+            closedWidth: Self.closedSize(hasContent: true).width,
+            notchWidth: Self.hardwareNotch.width,
+            islandHalfRoom: usesLyricsShelf ? 0 : closedMusicIslandHalfRoom
+        )
+        return ClosedLyricsLayout.metrics(for: player.lyrics.line, width: width)
+    }
 
     var closedLyricsHeight: CGFloat {
-        if usesLyricsShelf { return hasTwoLineLyrics ? 34 : 22 }
-        return hasTwoLineLyrics ? 12 : 0
+        ClosedLyricsLayout.extraHeight(
+            for: closedLyricsMetrics,
+            usesShelf: usesLyricsShelf,
+            notchHeight: Self.hardwareNotch.height
+        )
     }
 
     var hasClosedLyrics: Bool {
@@ -257,9 +271,7 @@ final class LabState {
         guard !controller.isExpanded, !isDropTarget, lockState == .none, liveActivities.current == nil else { return (0, 0) }
         if shownFeature == nil { return idleArt != nil ? (-5, -MusicClosedView.slot) : (0, 0) }
         if shownFeature == .music && player.isShowingLyrics && !usesLyricsShelf {
-            let width = player.lyrics.lineWidth
-            let middle = hasTwoLineLyrics ? min(max(ceil(width / 2) + 12, closedLyricsWidth), 224) : width
-            let half = ceil(max(0, middle - Self.hardwareNotch.width) / 2)
+            let half = closedMusicIslandHalfRoom
             return (half, half)
         }
         guard shownFeature == .agents else { return (0, 0) }
@@ -595,6 +607,7 @@ struct NicheView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .animation(closedResize, value: lab.hasClosedContent)
+        .animation(.spring(response: 0.45, dampingFraction: 0.95), value: lab.closedLyricsHeight)
     }
 
     private var closedResize: Animation {

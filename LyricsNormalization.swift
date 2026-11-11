@@ -1,21 +1,23 @@
 import Foundation
 
 enum LyricsNormalization {
-    private static let noiseRegex = try! NSRegularExpression(
-        pattern: #"\s*[(\[](official( music| lyric)? video|official audio|audio|lyrics?( video)?|visuali[sz]er|mv|4k|hd|live[^)\]]*|f(ea)?t\.[^)\]]*|prod\.[^)\]]*|video musik resmi|video lirik)[)\]]"#,
-        options: .caseInsensitive
+    private static let bracketsRegex = try! NSRegularExpression(
+        pattern: #"\s*(\([^)]*\)|\[[^\]]*\]|【[^】]*】|（[^）]*）)"#
     )
 
-    private static let versionRegex = try! NSRegularExpression(
-        pattern: #"\s*[(\[][^)\]]*(remix|edit|version|live|acoustic|sped up|slowed|remastered)[^)\]]*[)\]]"#,
-        options: .caseInsensitive
-    )
+    private static let trailingPunctuation = CharacterSet(charactersIn: " \"“”.,-~")
 
-    private static let trailingPunctuation = CharacterSet(charactersIn: " \"'“”.,-~")
+    static func searchTitle(_ title: String) -> String {
+        var cleaned = title
+        if let pipe = cleaned.firstIndex(of: "|") {
+            cleaned = String(cleaned[..<pipe])
+        }
+        let unbracketed = replace(bracketsRegex, in: cleaned).trimmingCharacters(in: .whitespacesAndNewlines)
+        return unbracketed.isEmpty ? cleaned.trimmingCharacters(in: .whitespacesAndNewlines) : unbracketed
+    }
 
     static func cleanTitle(_ title: String) -> String {
-        var cleaned = replace(noiseRegex, in: title)
-        cleaned = replace(versionRegex, in: cleaned)
+        var cleaned = searchTitle(title)
         if let dashRange = cleaned.range(of: " - ", options: .backwards) {
             let suffix = cleaned[dashRange.upperBound...].lowercased()
             if ["official", "video", "audio", "lyrics", "lyric", "visualizer", "mv"].contains(where: { suffix.contains($0) }) {
@@ -25,7 +27,11 @@ enum LyricsNormalization {
         while cleaned.contains("..") {
             cleaned = cleaned.replacingOccurrences(of: "..", with: ".")
         }
-        return cleaned.trimmingCharacters(in: trailingPunctuation)
+        var result = cleaned.trimmingCharacters(in: trailingPunctuation)
+        if result.hasPrefix("'") && result.hasSuffix("'") && result.count > 1 {
+            result = String(result.dropFirst().dropLast()).trimmingCharacters(in: trailingPunctuation)
+        }
+        return result.isEmpty ? title.trimmingCharacters(in: trailingPunctuation) : result
     }
 
     static func artistVariants(_ artist: String) -> [String] {
@@ -58,6 +64,28 @@ enum LyricsNormalization {
             }
         }
         return list
+    }
+
+    static func isCJKScalar(_ v: UInt32) -> Bool {
+        (0x4E00...0x9FFF).contains(v) || (0x3400...0x4DBF).contains(v) || (0x20000...0x2A6DF).contains(v)
+    }
+
+    static func hasCJK(_ text: String) -> Bool {
+        text.unicodeScalars.contains { isCJKScalar($0.value) }
+    }
+
+    static func hasEastAsianScript(_ text: String) -> Bool {
+        text.unicodeScalars.contains {
+            let v = $0.value
+            return isCJKScalar(v) || (0x3040...0x309F).contains(v) || (0x30A0...0x30FF).contains(v) || (0xAC00...0xD7AF).contains(v)
+        }
+    }
+
+    static func cjkRatio(_ text: String) -> Double {
+        let scalars = text.unicodeScalars
+        guard !scalars.isEmpty else { return 0 }
+        let cjkCount = scalars.reduce(0) { $0 + (isCJKScalar($1.value) ? 1 : 0) }
+        return Double(cjkCount) / Double(scalars.count)
     }
 
     private static func replace(_ regex: NSRegularExpression, in text: String) -> String {

@@ -23,6 +23,7 @@ final class AgentMonitor {
     let usage = AgentUsage()
     @ObservationIgnored private var timer: Timer?
     @ObservationIgnored private let queue = DispatchQueue(label: "niche.agents", qos: .utility)
+    @ObservationIgnored private let focusQueue = DispatchQueue(label: "niche.agents.focus", qos: .userInitiated)
     @ObservationIgnored var enabled: Set<AgentKind> = [] {
         didSet { refresh() }
     }
@@ -60,7 +61,7 @@ final class AgentMonitor {
     }
 
     func focus(_ session: AgentSession) {
-        queue.async { Self.focus(pid: session.pid) }
+        focusQueue.async { Self.focus(pid: session.pid) }
     }
 
     nonisolated private static func focus(pid: pid_t) {
@@ -130,6 +131,7 @@ final class AgentMonitor {
             return
         }
         let app = AXUIElementCreateApplication(appPID)
+        AXUIElementSetMessagingTimeout(app, 0.5)
         func attribute(_ element: AXUIElement, _ name: String) -> CFTypeRef? {
             var value: CFTypeRef?
             return AXUIElementCopyAttributeValue(element, name as CFString, &value) == .success ? value : nil
@@ -276,8 +278,11 @@ final class AgentMonitor {
             NSLog("Niche could not run %@: %@", tool, String(describing: error))
             return ""
         }
+        let timeout = DispatchWorkItem { if process.isRunning { process.terminate() } }
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 5, execute: timeout)
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
         process.waitUntilExit()
+        timeout.cancel()
         return String(decoding: data, as: UTF8.self)
     }
 }

@@ -3,17 +3,24 @@ import Foundation
 enum LRCLIBClient {
     private static let agent = "Niche/\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0") (https://github.com/raihanadf/niche)"
 
-    static func fetch(title: String, artist: String, duration: Double) async -> [LyricLine]? {
+    static func fetch(title: String, artist: String, album: String? = nil, duration: Double) async -> [LyricLine]? {
         let cleanTitle = LyricsNormalization.cleanTitle(title)
         let artists = LyricsNormalization.artistVariants(artist)
         let primaryArtist = artists.first ?? artist
+        let trimmedAlbum = album?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let effectiveAlbum = (trimmedAlbum?.isEmpty == false) ? trimmedAlbum : nil
 
-        var cascades: [[String: String]] = [
-            ["track_name": cleanTitle, "artist_name": primaryArtist],
-            ["q": "\(primaryArtist) \(cleanTitle)"]
-        ]
+        var cascades: [[String: String]] = []
+        if let effectiveAlbum {
+            cascades.append(["track_name": cleanTitle, "artist_name": primaryArtist, "album_name": effectiveAlbum])
+        }
+        cascades.append(["track_name": cleanTitle, "artist_name": primaryArtist])
+        cascades.append(["q": "\(primaryArtist) \(cleanTitle)"])
         if artists.count > 1 {
             for a in artists.dropFirst() {
+                if let effectiveAlbum {
+                    cascades.append(["track_name": cleanTitle, "artist_name": a, "album_name": effectiveAlbum])
+                }
                 cascades.append(["track_name": cleanTitle, "artist_name": a])
             }
         }
@@ -23,7 +30,7 @@ enum LRCLIBClient {
             guard let items = await search(query), !items.isEmpty else { continue }
             let scored = items.compactMap { item -> ([LyricLine], Int)? in
                 guard let lines = parse(item),
-                      let score = score(item, cleanTitle: cleanTitle, artists: artists, duration: duration) else {
+                      let score = score(item, cleanTitle: cleanTitle, artists: artists, album: effectiveAlbum, duration: duration) else {
                     return nil
                 }
                 return (lines, score)
@@ -50,7 +57,7 @@ enum LRCLIBClient {
         }
     }
 
-    private static func score(_ item: [String: Any], cleanTitle: String, artists: [String], duration: Double) -> Int? {
+    private static func score(_ item: [String: Any], cleanTitle: String, artists: [String], album: String?, duration: Double) -> Int? {
         let hasSynced = (item["syncedLyrics"] as? String)?.isEmpty == false
         var score = hasSynced ? 1000 : 400
 
@@ -71,6 +78,15 @@ enum LRCLIBClient {
             } else if itemArtist.contains(aLower) || aLower.contains(itemArtist) {
                 score += 200
                 break
+            }
+        }
+
+        if let album = album?.lowercased(), !album.isEmpty {
+            let itemAlbum = (item["albumName"] as? String)?.lowercased() ?? ""
+            if itemAlbum == album {
+                score += 200
+            } else if itemAlbum.contains(album) || album.contains(itemAlbum) {
+                score += 100
             }
         }
 

@@ -1,9 +1,13 @@
 import Foundation
 
-struct LyricLine: Identifiable, Equatable, Sendable {
+struct LyricLine: Identifiable, Equatable, Sendable, Codable {
     let id: Int, time: Double, end: Double, text: String, charTimings: [Double]
-    init(id: Int, time: Double, end: Double, text: String, charTimings: [Double] = []) {
-        self.id = id; self.time = time; self.end = end; self.text = text; self.charTimings = charTimings
+    let agent: String?
+    let isBackground: Bool
+    init(id: Int, time: Double, end: Double, text: String, charTimings: [Double] = [],
+         agent: String? = nil, isBackground: Bool = false) {
+        self.id = id; self.time = time; self.end = end; self.text = text
+        self.charTimings = charTimings; self.agent = agent; self.isBackground = isBackground
     }
 }
 
@@ -12,35 +16,6 @@ enum LyricsParser {
         "作词", "作曲", "编曲", "制作人", "监制", "录音", "混音", "母带",
         "written by", "lyrics by", "composed by", "produced by", "arranged by"
     ]
-    private static let vowels = Set("aeiouyàáâãäåæèéêëìíîïòóôõöøùúûüýÿ")
-
-    static func syllableCount(_ word: String) -> Int {
-        var count = 0, inVowel = false
-        for ch in word.lowercased() {
-            if vowels.contains(ch) {
-                if !inVowel { count += 1; inVowel = true }
-            } else { inVowel = false }
-        }
-        return max(1, count)
-    }
-
-    static func charTimings(text: String, start: Double, end: Double) -> [Double] {
-        guard !text.isEmpty else { return [] }
-        let duration = max(0.1, end - start)
-        let words = text.components(separatedBy: " ")
-        let syllables = words.map { $0.isEmpty ? 0 : syllableCount($0) }
-        let totalSyllables = max(1, syllables.reduce(0, +))
-        var timings: [Double] = [], currentT = start
-        timings.reserveCapacity(text.count)
-        for (i, word) in words.enumerated() {
-            let wordDur = duration * (Double(syllables[i]) / Double(totalSyllables))
-            let charDur = word.isEmpty ? 0 : wordDur / Double(word.count)
-            for _ in word { timings.append(currentT); currentT += charDur }
-            if i < words.count - 1 { timings.append(currentT) }
-        }
-        return timings
-    }
-
     static func parseLRC(_ lrc: String) -> [LyricLine] {
         var stamps: [(time: Double, text: String)] = []
         var offset = 0.0
@@ -55,13 +30,14 @@ enum LyricsParser {
                     offset = ms / 1000.0
                 }
                 if numbers.count == tag.count, (2...3).contains(tag.count) {
-                    let seconds = numbers[0] * 60 + numbers[1] + (tag.count == 3 ? numbers[2] / 100.0 : 0)
+                    let divisor = tag.count == 3 ? pow(10.0, Double(tag[2].count)) : 1.0
+                    let seconds = numbers[0] * 60 + numbers[1] + (tag.count == 3 ? numbers[2] / divisor : 0)
                     times.append(seconds)
                 }
                 rest = rest[rest.index(after: close)...]
             }
             let text = rest.replacing(#/<\d+:\d+([.:]\d+)?>/#, with: "").trimmingCharacters(in: .whitespaces)
-            if !text.isEmpty, !isCreditLine(text, times: times) {
+            if !text.isEmpty, !isCreditLine(text, times: times), !LyricsWordParser.isMetadataOrJunkLine(text) {
                 stamps += times.map { ($0, text) }
             }
         }
@@ -73,11 +49,11 @@ enum LyricsParser {
             let chars = Double(max(1, text.count))
             let next = i + 1 < stamps.count ? stamps[i + 1].time : time + max(3.5, min(7.0, words * 0.45 + 1.2))
             let gap = max(0.6, next - time)
-            let duration: Double = gap <= 6.0
-                ? max(0.5, gap - min(0.4, gap * 0.12))
-                : min(gap - 0.5, max(3.0, min(8.0, words * 0.45 + chars * 0.06 + 1.0)))
+            let duration: Double = gap <= 5.0
+                ? gap
+                : min(gap - 1.5, max(3.5, min(8.0, words * 0.50 + chars * 0.06 + 1.5)))
             let end = max(time + 0.5, time + duration)
-            return LyricLine(id: i, time: time, end: end, text: text, charTimings: charTimings(text: text, start: time, end: end))
+            return LyricLine(id: i, time: time, end: end, text: text, charTimings: [])
         }
     }
 
