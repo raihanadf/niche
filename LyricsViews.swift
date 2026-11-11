@@ -57,8 +57,8 @@ struct LyricsView: View {
                 }
             }
         }
-        .transition(.opacity)
-        .animation(.easeOut(duration: 0.28), value: player.lyrics.state)
+        .transition(.blurReplace)
+        .animation(.fadeIn, value: player.lyrics.state)
         .frame(height: Self.height)
         .clipped()
         .mask(Self.mask)

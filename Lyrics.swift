@@ -31,10 +31,6 @@ final class Lyrics {
         return base.fontDescriptor.withDesign(.rounded).flatMap { NSFont(descriptor: $0, size: size) } ?? base
     }
 
-    init() {
-        Self.purgeLegacyOffsets()
-    }
-
     var line: String {
         guard case .loaded(let lines, let synced) = state, !lines.isEmpty else { return "" }
         guard synced else { return lines.first?.text ?? "" }
@@ -87,8 +83,7 @@ final class Lyrics {
         guard let track else {
             task?.cancel()
             key = ""
-            offset = 0.0
-            withAnimation(Self.resize) {
+            withAnimation(.settle) {
                 state = .idle
                 index = nil
                 secondaryIndex = nil
@@ -100,7 +95,6 @@ final class Lyrics {
         let key = "\(track.artist)|\(track.title)|\(track.album)".lowercased()
         guard key != self.key else { return }
         self.key = key
-        self.offset = loadUserOffset(for: key)
         task?.cancel()
         task = Task { [weak self] in
             var cachedHasWordTimings = false

@@ -55,7 +55,7 @@ final class AgentMonitor {
                 for session in live where session.state == .paused && wasWorking.contains(session.id) {
                     self.onFinished?(session)
                 }
-                withAnimation(.spring(Spring(duration: 0.35, bounce: 0.3), blendDuration: 0)) { self.sessions = live }
+                withAnimation(.arrive) { self.sessions = live }
             }
         }
     }
@@ -317,7 +317,7 @@ struct StatusDot: View {
             .overlay(Circle().stroke(.black, lineWidth: 1.5))
             .phaseAnimator(working ? [1.0, 0.3] : [1.0]) { dot, opacity in
                 dot.opacity(opacity)
-            } animation: { _ in .easeInOut(duration: 0.7) }
+            } animation: { _ in .pulse }
     }
 }
 
@@ -376,7 +376,7 @@ private struct MoreButton: View {
         }
         .buttonStyle(.plain)
         .onHover { isHovered = $0 }
-        .animation(.easeOut(duration: 0.12), value: isHovered)
+        .animation(.hover, value: isHovered)
     }
 }
 
@@ -416,7 +416,7 @@ struct AgentSessionRow: View {
         }
         .buttonStyle(.plain)
         .onHover { isHovered = $0 }
-        .animation(.easeOut(duration: 0.12), value: isHovered)
+        .animation(.hover, value: isHovered)
     }
 }
 
@@ -439,7 +439,7 @@ struct AgentClosedView: View {
                     .offset(y: LabState.closedArtOffset)
                     .padding(.leading, LabState.closedArtLeading)
                     .frame(width: MusicClosedView.slot, alignment: .leading)
-                    .transition(.opacity)
+                    .transition(.blurReplace)
                 Spacer(minLength: 0)
                 if !sessions.isEmpty {
                     HStack(spacing: 7) {
@@ -474,7 +474,7 @@ struct AgentClosedView: View {
             }
         }
         .frame(height: LabState.hardwareNotch.height)
-        .animation(.spring(response: 0.4, dampingFraction: 0.85), value: live)
+        .animation(.arrive, value: live)
         .onAppear { lastSessions = monitor.sessions }
         .onChange(of: monitor.sessions) { _, sessions in
             if !sessions.isEmpty { lastSessions = sessions }

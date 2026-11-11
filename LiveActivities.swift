@@ -300,7 +300,7 @@ final class LiveActivityCenter {
         let step: Float = fine ? 1.0 / 64 : 1.0 / 16
         if !isVolume && isDown { brightnessKeyAt = Date() }
         guard replacesSystemHUD else { return false }
-        if isVolume && (isBluetoothOutput || Self.isBluetooth(volumeDevice)) { return false }
+        if isVolume && isBluetoothOutput { return false }
         guard isDown else { return true }
         if isVolume {
             let now = CACurrentMediaTime()
@@ -350,6 +350,7 @@ final class LiveActivityCenter {
         }
         AudioObjectSetPropertyData(device, &volume, 0, nil, size, &newLevel)
     }
+
     nonisolated private static func isBluetooth(_ device: AudioObjectID) -> Bool {
         var transport = UInt32(0)
         var size = UInt32(MemoryLayout<UInt32>.size)
@@ -359,7 +360,6 @@ final class LiveActivityCenter {
         guard AudioObjectGetPropertyData(device, &address, 0, nil, &size, &transport) == noErr else { return false }
         return transport == kAudioDeviceTransportTypeBluetooth || transport == kAudioDeviceTransportTypeBluetoothLE
     }
-
 
     private func readCaps() {
         let caps = CGEventSource.flagsState(.combinedSessionState).contains(.maskAlphaShift)
@@ -529,7 +529,7 @@ final class LiveActivityCenter {
 
     private func show(_ activity: Activity, for seconds: Double) {
         let animation: Animation = current?.kind == activity.kind
-            ? .smooth(duration: 0.25) : .spring(Spring(duration: 0.4, bounce: 0.25), blendDuration: 0)
+            ? .level : .arrive
         withAnimation(animation) {
             current = activity
             isShowing = true
@@ -544,11 +544,11 @@ final class LiveActivityCenter {
 
     private func hide() {
         hideTask?.cancel()
-        withAnimation(.easeOut(duration: 0.25)) { isShowing = false }
+        withAnimation(.leave) { isShowing = false }
         hideTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(0.25))
             guard !Task.isCancelled, let self else { return }
-            withAnimation(.spring(response: 0.45, dampingFraction: 0.95)) { self.current = nil }
+            withAnimation(.settle) { self.current = nil }
         }
     }
 }
@@ -702,7 +702,7 @@ private struct SunGlyph: View {
         }
         .foregroundStyle(.yellow)
         .frame(width: 16, height: 16)
-        .animation(.smooth(duration: 0.25), value: level)
+        .animation(.level, value: level)
     }
 }
 
@@ -717,6 +717,6 @@ private struct LevelBar: View {
                     .frame(width: Self.width * min(max(level, 0), 1))
             }
             .frame(width: Self.width, height: 5)
-            .animation(.smooth(duration: 0.25), value: level)
+            .animation(.level, value: level)
     }
 }

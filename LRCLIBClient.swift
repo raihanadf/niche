@@ -1,7 +1,7 @@
 import Foundation
 
 enum LRCLIBClient {
-    private static let agent = "Niche/\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0") (https://github.com/raihanadf/niche)"
+    private static let agent = "Niche/\(Bundle.main.infoDictionary!["CFBundleShortVersionString"] as! String) (https://github.com/raihanadf/niche)"
 
     static func fetch(title: String, artist: String, album: String? = nil, duration: Double) async -> [LyricLine]? {
         let cleanTitle = LyricsNormalization.cleanTitle(title)
@@ -53,6 +53,7 @@ enum LRCLIBClient {
             guard (response as? HTTPURLResponse)?.statusCode == 200 else { return nil }
             return try JSONSerialization.jsonObject(with: data) as? [[String: Any]]
         } catch {
+            NSLog("Niche could not reach lrclib: %@", String(describing: error))
             return nil
         }
     }
@@ -68,17 +69,9 @@ enum LRCLIBClient {
         } else if itemTitle.contains(cleanLower) || cleanLower.contains(itemTitle) {
             score += 250
         }
-
-        let itemArtist = (item["artistName"] as? String)?.lowercased() ?? ""
-        for a in artists {
-            let aLower = a.lowercased()
-            if itemArtist == aLower {
-                score += 400
-                break
-            } else if itemArtist.contains(aLower) || aLower.contains(itemArtist) {
-                score += 200
-                break
-            }
+        if let have = (item["artistName"] as? String)?.lowercased(), !have.isEmpty,
+           let want = artists.lazy.map({ $0.lowercased() }).first(where: { have.contains($0) || $0.contains(have) }) {
+            score += have == want ? 400 : 200
         }
 
         if let album = album?.lowercased(), !album.isEmpty {
