@@ -1,14 +1,52 @@
 import Foundation
 
+enum LyricsSource: String, CaseIterable, Sendable {
+    case automatic, boidu, lyricsPlus, lrclib, youtubeMusic, unison, netease, qqMusic, kugou, deezer
+
+    var name: String {
+        switch self {
+        case .automatic: "Automatic"
+        case .boidu: "Boidu (Apple Music)"
+        case .lyricsPlus: "LyricsPlus"
+        case .lrclib: "LRCLIB"
+        case .youtubeMusic: "YouTube Music"
+        case .unison: "Unison"
+        case .netease: "NetEase"
+        case .qqMusic: "QQ Music"
+        case .kugou: "Kugou"
+        case .deezer: "Deezer"
+        }
+    }
+}
+
 actor LyricsService {
     static let shared = LyricsService()
     static let agent = "Niche/\(Bundle.main.infoDictionary!["CFBundleShortVersionString"] as! String) (https://github.com/raihanadf/niche)"
 
-    func fetch(title: String, artist: String, album: String? = nil, duration: Double) async -> Lyrics.State {
+    func fetch(title: String, artist: String, album: String? = nil, duration: Double, source: LyricsSource) async -> Lyrics.State {
         guard !Task.isCancelled,
               !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               duration.isFinite, duration >= 0 else { return .missing }
 
+        let lines: [LyricLine]?
+        switch source {
+        case .automatic: return await automatic(title: title, artist: artist, album: album, duration: duration)
+        case .boidu: lines = await BoiduClient.fetch(title: title, artist: artist, album: album, duration: duration)
+        case .lyricsPlus: lines = await LyricsPlusClient.fetch(title: title, artist: artist, album: album, duration: duration)
+        case .lrclib: lines = await LRCLIBClient.fetch(title: title, artist: artist, album: album, duration: duration)
+        case .youtubeMusic: lines = await YouTubeMusicClient.fetch(title: title, artist: artist, duration: duration)
+        case .unison: lines = await UnisonClient.fetch(title: title, artist: artist, duration: duration)
+        case .netease: lines = await NetEaseClient.fetch(title: title, artist: artist, duration: duration)
+        case .qqMusic: lines = await QQMusicClient.fetch(title: title, artist: artist, duration: duration)
+        case .kugou: lines = await KugouClient.fetch(title: title, artist: artist, duration: duration)
+        case .deezer: lines = await DeezerClient.fetch(title: title, artist: artist, duration: duration)
+        }
+        guard !Task.isCancelled, let lines else { return .missing }
+        if isValidSynced(lines, duration: duration) { return .loaded(lines, synced: true) }
+        return isValidPlain(lines, duration: duration) ? .loaded(lines, synced: false) : .missing
+    }
+
+    private func automatic(title: String, artist: String, album: String?, duration: Double) async -> Lyrics.State {
         async let boidu = BoiduClient.fetch(title: title, artist: artist, album: album, duration: duration)
         async let lyricsPlus = LyricsPlusClient.fetch(title: title, artist: artist, album: album, duration: duration)
         let (bLines, lpLines) = await (boidu, lyricsPlus)

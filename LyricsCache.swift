@@ -23,8 +23,8 @@ actor LyricsCache {
         try? fm.createDirectory(at: folderURL, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
     }
 
-    func get(artist: String, title: String, album: String, duration: Double) -> (lines: [LyricLine], synced: Bool)? {
-        let key = cacheKey(artist: artist, title: title, album: album, duration: duration)
+    func get(artist: String, title: String, album: String, duration: Double, source: LyricsSource) -> (lines: [LyricLine], synced: Bool)? {
+        let key = cacheKey(artist: artist, title: title, album: album, duration: duration, source: source)
         let now = Date()
 
         if let item = memoryCache[key] {
@@ -57,9 +57,9 @@ actor LyricsCache {
         return (item.lines, item.synced)
     }
 
-    func set(artist: String, title: String, album: String, duration: Double, lines: [LyricLine], synced: Bool) {
+    func set(artist: String, title: String, album: String, duration: Double, source: LyricsSource, lines: [LyricLine], synced: Bool) {
         guard !lines.isEmpty, lines.contains(where: { !LyricsWordParser.isMetadataOrJunkLine($0.text) }) else { return }
-        let key = cacheKey(artist: artist, title: title, album: album, duration: duration)
+        let key = cacheKey(artist: artist, title: title, album: album, duration: duration, source: source)
         let item = CachedLyrics(version: 4, lines: lines, synced: synced, savedAt: Date())
         guard let data = try? JSONEncoder().encode(item), data.count <= 1_048_576 else { return }
         remember(key: key, item: item)
@@ -103,9 +103,10 @@ actor LyricsCache {
         }
     }
 
-    private func cacheKey(artist: String, title: String, album: String, duration: Double) -> String {
+    private func cacheKey(artist: String, title: String, album: String, duration: Double, source: LyricsSource) -> String {
         let roundedDur = (duration.isFinite && duration >= 0 && duration < 86_400) ? Int(duration.rounded()) : 0
-        let raw = "\(artist)|\(title)|\(album)|\(roundedDur)".lowercased()
+        let picked = source == .automatic ? "" : "|\(source.rawValue)"
+        let raw = "\(artist)|\(title)|\(album)|\(roundedDur)\(picked)".lowercased()
         let digest = SHA256.hash(data: Data(raw.utf8))
         return digest.map { String(format: "%02x", $0) }.joined()
     }

@@ -208,9 +208,9 @@ struct ClosedLyric: NSViewRepresentable {
 
     func updateNSView(_ view: KaraokeView, context: Context) {
         let lyrics = player.lyrics
-        let timings = lyrics.activeLine.flatMap { $0.text == text ? $0.charTimings : nil }
+        let timings = lyrics.isKaraoke ? lyrics.activeLine.flatMap { $0.text == text ? $0.charTimings : nil } : nil
         view.update(text: text, timings: timings, twoRows: twoRows,
-                    time: player.currentPosition + lyrics.lead, isPlaying: player.isPlaying)
+                    time: player.currentPosition - lyrics.delay, isPlaying: player.isPlaying)
     }
 }
 
@@ -313,15 +313,18 @@ final class KaraokeView: NSView {
             guard let timings else { continue }
             let end = entry.range.location + entry.range.length
             var keys: [(time: Double, x: CGFloat)] = []
+            var step = 0.1
             for (char, start) in starts.enumerated() where start >= entry.range.location && start < end {
-                let next = char + 1 < starts.count ? starts[char + 1] : utf16.count
-                let left = CTLineGetOffsetForStringIndex(entry.line, start, nil)
-                let right = CTLineGetOffsetForStringIndex(entry.line, min(next, end), nil)
-                if keys.isEmpty { keys.append((timings[char] - 0.16, originX + left - Self.soft / 2)) }
-                keys.append((timings[char] - 0.08, originX + (left + right) / 2))
+                let left = originX + CTLineGetOffsetForStringIndex(entry.line, start, nil)
+                if let previous = keys.last {
+                    step = min(max(timings[char] - previous.time, 0.05), 0.3)
+                } else {
+                    keys.append((timings[char] - 0.05, left - Self.soft / 2))
+                }
+                keys.append((timings[char], left))
             }
             guard let last = keys.last else { continue }
-            keys.append((last.time + 0.08, originX + width + Self.soft / 2))
+            keys.append((last.time + step, originX + width + Self.soft / 2))
             rows.append(Row(band: CGRect(x: 0, y: bandY, width: bounds.width, height: lineHeight), keys: keys))
         }
         let image = context.makeImage()

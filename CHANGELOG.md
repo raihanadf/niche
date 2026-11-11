@@ -1,5 +1,14 @@
 # changelog
 
+## 0.9.0
+
+lyrics you can tune: pick the source, turn karaoke off, and timing that matches apple music.
+
+- settings let you pick where lyrics come from: automatic asks every source, or pick one to use only that source. boidu carries apple music's own lyrics.
+- karaoke can be turned off in settings. the closed notch then shows the line without the word sweep.
+- the karaoke sweep lights a word when it's sung instead of about a quarter second early, and lyrics no longer run ahead on bluetooth and airplay. if they still feel off, the timing slider in settings moves them earlier or later.
+- memory: 19 mb after launch, same as 0.8.0. the download is 2.6 mb (+5 kb).
+
 ## 0.8.0
 
 lyrics found for many more songs, with real word timing where it exists. thanks @David4rr.

@@ -91,11 +91,8 @@ final class MusicPlayer {
         self.setElapsed = unsafeBitCast(setElapsed, to: (@convention(c) (Double) -> Void).self)
         self.setShuffle = unsafeBitCast(setShuffle, to: (@convention(c) (Int) -> Void).self)
         output.onDeviceChange = { [weak self] in
-            guard let self else { return }
-            self.spectrum.refresh()
-            self.lyrics.updateTransport(self.output.transportType)
+            self?.spectrum.refresh()
         }
-        lyrics.updateTransport(output.transportType)
     }
 
     func start() {
@@ -149,9 +146,6 @@ final class MusicPlayer {
         clearTask?.cancel()
         clearTask = nil
         let isNewSong = lastSong.map { !$0.isSameSong(as: next) } ?? false
-        if isNewSong {
-            lyrics.updateTransport(output.transportType)
-        }
         if isPlaying && !snapshot.isPlaying && !isNewSong {
             let live = (CACurrentMediaTime() - baseMonotonic) * rate
             elapsedAtTimestamp = max(snapshot.elapsed, min(elapsedAtTimestamp + live, next.duration))

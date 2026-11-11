@@ -164,8 +164,24 @@ struct SettingsView: View {
             }
             Section {
                 Toggle("Lyrics", isOn: Binding(get: { player.allowsLyrics }, set: { player.allowsLyrics = $0 }))
+                Group {
+                    Picker("Source", selection: Binding(get: { player.lyrics.source }, set: { player.lyrics.source = $0 })) {
+                        ForEach(LyricsSource.allCases, id: \.self) { Text($0.name).tag($0) }
+                    }
+                    Toggle("Karaoke", isOn: Binding(get: { player.lyrics.isKaraoke }, set: { player.lyrics.isKaraoke = $0 }))
+                    LabeledContent("Timing") {
+                        HStack(spacing: 10) {
+                            Slider(value: Binding(get: { player.lyrics.delay }, set: { player.lyrics.delay = $0 }), in: -1...1, step: 0.05)
+                            Text(player.lyrics.delay == 0 ? "on time" : String(format: "%.2f s %@", abs(player.lyrics.delay), player.lyrics.delay > 0 ? "later" : "earlier"))
+                                .monospacedDigit()
+                                .foregroundStyle(.secondary)
+                                .frame(width: 92, alignment: .trailing)
+                        }
+                    }
+                }
+                .disabled(!player.allowsLyrics)
             } footer: {
-                Text("Adds a lyrics button to the player. Lyrics come from lrclib.net, deezer and netease, which only see the songs you open lyrics for.")
+                Text("Adds a lyrics button to the player. Automatic asks every source and keeps the best timed lyrics; pick a source to use only that one. Boidu carries Apple Music's own lyrics. Karaoke lights up the current line word by word in the closed notch. Move timing if lyrics run ahead of or behind what you hear. Sources only see the songs you open lyrics for.")
             }
         }
     }

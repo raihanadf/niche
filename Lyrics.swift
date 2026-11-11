@@ -1,5 +1,4 @@
 import AppKit
-import CoreAudio
 import SwiftUI
 
 @MainActor
@@ -12,13 +11,31 @@ final class Lyrics {
     private(set) var secondaryIndex: Int?
     private(set) var isSinging = false
     private(set) var loadToken: Int = 0
-    private(set) var hardwareLead: Double = 0.08
+    var source: LyricsSource {
+        didSet {
+            UserDefaults.standard.set(source.rawValue, forKey: "lyricsSource")
+            key = ""
+            load(track)
+        }
+    }
+    var isKaraoke: Bool {
+        didSet { UserDefaults.standard.set(isKaraoke, forKey: "lyricsKaraoke") }
+    }
+    var delay: Double {
+        didSet { UserDefaults.standard.set(delay, forKey: "lyricsDelay") }
+    }
     let displayLead: Double = 0.28
-    let sweepLead: Double = 0.08
-    var lead: Double { hardwareLead + sweepLead }
     @ObservationIgnored private var key = ""
+    @ObservationIgnored private var track: Track?
     @ObservationIgnored private var task: Task<Void, Never>?
     @ObservationIgnored private var measured = (text: "", width: CGFloat(0))
+
+    init() {
+        UserDefaults.standard.register(defaults: ["lyricsSource": LyricsSource.automatic.rawValue, "lyricsKaraoke": true, "lyricsDelay": 0.0])
+        source = LyricsSource(rawValue: UserDefaults.standard.string(forKey: "lyricsSource")!)!
+        isKaraoke = UserDefaults.standard.bool(forKey: "lyricsKaraoke")
+        delay = UserDefaults.standard.double(forKey: "lyricsDelay")
+    }
 
     static let closedFont = NSFont(descriptor: NSFont.systemFont(ofSize: 11.5, weight: .semibold).fontDescriptor.withDesign(.rounded)!, size: 11.5)!
 
@@ -54,18 +71,8 @@ final class Lyrics {
         return measured.width
     }
 
-    func updateTransport(_ transport: UInt32) {
-        switch transport {
-        case kAudioDeviceTransportTypeBluetooth, kAudioDeviceTransportTypeBluetoothLE:
-            hardwareLead = 0.10
-        case kAudioDeviceTransportTypeAirPlay:
-            hardwareLead = 0.35
-        default:
-            hardwareLead = 0.08
-        }
-    }
-
     func load(_ track: Track?) {
+        self.track = track
         guard let track else {
             task?.cancel()
             key = ""
@@ -79,12 +86,13 @@ final class Lyrics {
             return
         }
         let key = "\(track.artist)|\(track.title)|\(track.album)".lowercased()
+        let source = self.source
         guard key != self.key else { return }
         self.key = key
         task?.cancel()
         task = Task { [weak self] in
             var cachedHasWordTimings = false
-            if let cached = await LyricsCache.shared.get(artist: track.artist, title: track.title, album: track.album, duration: track.duration) {
+            if let cached = await LyricsCache.shared.get(artist: track.artist, title: track.title, album: track.album, duration: track.duration, source: source) {
                 guard !Task.isCancelled, let self, self.key == key else { return }
                 cachedHasWordTimings = cached.lines.contains { !$0.charTimings.isEmpty }
                 self.commitLoaded(cached.lines, synced: cached.synced)
@@ -102,13 +110,14 @@ final class Lyrics {
                 title: track.title,
                 artist: track.artist,
                 album: track.album,
-                duration: track.duration
+                duration: track.duration,
+                source: source
             )
             guard !Task.isCancelled, let self, self.key == key else { return }
             if case .loaded(let lines, let synced) = result {
                 let fetchedHasWords = lines.contains { !$0.charTimings.isEmpty }
                 if fetchedHasWords || !cachedHasWordTimings {
-                    await LyricsCache.shared.set(artist: track.artist, title: track.title, album: track.album, duration: track.duration, lines: lines, synced: synced)
+                    await LyricsCache.shared.set(artist: track.artist, title: track.title, album: track.album, duration: track.duration, source: source, lines: lines, synced: synced)
                     guard !Task.isCancelled, self.key == key else { return }
                 }
                 if fetchedHasWords || self.state == .loading {
@@ -137,7 +146,7 @@ final class Lyrics {
 
     func sync(_ position: Double) {
         guard case .loaded(let lines, synced: true) = state, !lines.isEmpty else { return }
-        let audioAt = position + hardwareLead
+        let audioAt = position - delay
         let (next, nextSecondary, singing) = Self.resolveLines(lines: lines, audioAt: audioAt, displayLead: displayLead)
         guard next != index || nextSecondary != secondaryIndex || singing != isSinging else { return }
         withAnimation(.settle) {
