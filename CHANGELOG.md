@@ -1,5 +1,18 @@
 # changelog
 
+## 0.8.0
+
+lyrics found for many more songs, with real word timing where it exists. thanks @David4rr.
+
+- lyrics now also come from boidu, lyricsplus, unison, youtube music, qq music and kugou, on top of lrclib, deezer and netease. sources with word-by-word timing are asked first, so the closed notch lights up words when they're actually sung instead of guessing from syllables.
+- songs with two singers show both lines in the lyrics panel, the second one on the right, and background vocals sit smaller under the main line.
+- lyrics are kept on disk for 60 days (up to 30 mb), so songs you play again show their lyrics at once.
+- long lyrics in the closed notch wrap onto two centered rows, and the notch grows only as much as the text needs.
+- whether lyrics are showing is remembered across restarts.
+- volume keys stay with macos when the current output is a bluetooth device, which stops a volume loop on some earbuds.
+- picking a terminal tab for an agent no longer stalls when accessibility is slow, and a stuck helper process is stopped after 5 s.
+- memory: 19 mb after launch (0.7.0: 20-21 mb). the download is 2.6 mb (+84 kb).
+
 ## 0.7.0
 
 karaoke lyrics in the closed notch, and more places to find lyrics. thanks @David4rr.

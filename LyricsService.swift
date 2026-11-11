@@ -2,13 +2,13 @@ import Foundation
 
 actor LyricsService {
     static let shared = LyricsService()
+    static let agent = "Niche/\(Bundle.main.infoDictionary!["CFBundleShortVersionString"] as! String) (https://github.com/raihanadf/niche)"
 
     func fetch(title: String, artist: String, album: String? = nil, duration: Double) async -> Lyrics.State {
         guard !Task.isCancelled,
               !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               duration.isFinite, duration >= 0 else { return .missing }
 
-        // Tier 1: Word-by-Word (#1 Boidu -> #2 LyricsPlus)
         async let boidu = BoiduClient.fetch(title: title, artist: artist, album: album, duration: duration)
         async let lyricsPlus = LyricsPlusClient.fetch(title: title, artist: artist, album: album, duration: duration)
         let (bLines, lpLines) = await (boidu, lyricsPlus)
@@ -21,7 +21,6 @@ actor LyricsService {
             return .loaded(lpLines, synced: true)
         }
 
-        // Stage 2: Race remaining word-timed capable (#5 Unison, #6 NetEase) & synced providers
         var lLines: [LyricLine]?
         var yLines: [LyricLine]?
         let uLines: [LyricLine]?
@@ -51,7 +50,6 @@ actor LyricsService {
             return .loaded(lines, synced: true)
         }
 
-        // Stage 3: Regional Asian Catalogues (#7 QQ Music -> #8 Kugou)
         async let qq = QQMusicClient.fetch(title: title, artist: artist, duration: duration)
         async let kugou = KugouClient.fetch(title: title, artist: artist, duration: duration)
         let (qLines, kLines) = await (qq, kugou)
@@ -62,7 +60,6 @@ actor LyricsService {
             return .loaded(lines, synced: true)
         }
 
-        // Tier 4: Deezer #9 & Plain-text fallback
         let dLines = await DeezerClient.fetch(title: title, artist: artist, duration: duration)
         guard !Task.isCancelled else { return .missing }
         if let dLines, isValidSynced(dLines, duration: duration) {

@@ -25,7 +25,7 @@ fi
 codesign --force --sign "$sign_identity" "$framework"
 
 xcrun swiftc -Osize -wmo -parse-as-library -target arm64-apple-macos15.0 -Xlinker -dead_strip \
-    -o "$app/Contents/MacOS/Niche" NotchAnimation.swift AudioSpectrum.swift LyricsModel.swift LyricsNormalization.swift LyricsWordParser.swift YRCParser.swift LyricsCache.swift LRCLIBClient.swift SecondaryLyricsClients.swift AsianLyricsClients.swift WordLyricsClients.swift UnisonClient.swift YouTubeMusicClient.swift LyricsService.swift Lyrics.swift LyricsViews.swift ClosedLyricsView.swift MusicLab.swift OutputDevice.swift Headphones.swift AgentSessions.swift AgentUsage.swift LiveActivities.swift Updater.swift Clipboard.swift IdleArt.swift Onboarding.swift SettingsView.swift NicheApp.swift
+    -o "$app/Contents/MacOS/Niche" NotchAnimation.swift AudioSpectrum.swift LyricsModel.swift LyricsNormalization.swift LyricsWordParser.swift YRCParser.swift LyricsCache.swift LRCLIBClient.swift SecondaryLyricsClients.swift AsianLyricsClients.swift WordLyricsClients.swift UnisonClient.swift YouTubeMusicClient.swift LyricsService.swift Lyrics.swift LyricsViews.swift ClosedLyricsLayout.swift MusicLab.swift OutputDevice.swift Headphones.swift AgentSessions.swift AgentUsage.swift LiveActivities.swift Updater.swift Clipboard.swift IdleArt.swift Onboarding.swift SettingsView.swift NicheApp.swift
 strip -x "$app/Contents/MacOS/Niche"
 
 xcrun actool AppIcon.icon --compile "$app/Contents/Resources" --platform macosx --minimum-deployment-target 15.0 \
@@ -40,8 +40,8 @@ cat > "$app/Contents/Info.plist" <<'PLIST'
     <key>CFBundleName</key><string>Niche</string>
     <key>CFBundleExecutable</key><string>Niche</string>
     <key>CFBundlePackageType</key><string>APPL</string>
-    <key>CFBundleShortVersionString</key><string>0.7.0</string>
-    <key>CFBundleVersion</key><string>60</string>
+    <key>CFBundleShortVersionString</key><string>0.8.0</string>
+    <key>CFBundleVersion</key><string>61</string>
     <key>CFBundleIconFile</key><string>AppIcon</string>
     <key>CFBundleIconName</key><string>AppIcon</string>
     <key>LSMinimumSystemVersion</key><string>15.0</string>

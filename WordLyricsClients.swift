@@ -1,8 +1,6 @@
 import Foundation
 
 enum BoiduClient {
-    private static let agent = "Niche/\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0")"
-
     static func fetch(title: String, artist: String, album: String? = nil, duration: Double) async -> [LyricLine]? {
         let clean = LyricsNormalization.cleanTitle(title)
         let primaryArtist = LyricsNormalization.artistVariants(artist).first ?? artist
@@ -47,7 +45,7 @@ enum BoiduClient {
         guard let url = comp.url else { return (0, nil) }
 
         var req = URLRequest(url: url, timeoutInterval: 5)
-        req.setValue(agent, forHTTPHeaderField: "User-Agent")
+        req.setValue(LyricsService.agent, forHTTPHeaderField: "User-Agent")
 
         do {
             let (data, resp) = try await URLSession.shared.data(for: req)
@@ -58,6 +56,7 @@ enum BoiduClient {
             }
             return (status, json)
         } catch {
+            NSLog("Niche could not reach boidu: %@", String(describing: error))
             return (0, nil)
         }
     }
@@ -81,8 +80,6 @@ enum BoiduClient {
 }
 
 enum LyricsPlusClient {
-    private static let agent = "Niche/\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0")"
-
     static func fetch(title: String, artist: String, album: String? = nil, duration: Double) async -> [LyricLine]? {
         let clean = LyricsNormalization.cleanTitle(title)
         let primaryArtist = LyricsNormalization.artistVariants(artist).first ?? artist
@@ -102,13 +99,14 @@ enum LyricsPlusClient {
         guard let url = comp.url else { return nil }
 
         var req = URLRequest(url: url, timeoutInterval: 5)
-        req.setValue(agent, forHTTPHeaderField: "User-Agent")
+        req.setValue(LyricsService.agent, forHTTPHeaderField: "User-Agent")
 
         do {
             let (data, resp) = try await URLSession.shared.data(for: req)
             guard (resp as? HTTPURLResponse)?.statusCode == 200 else { return nil }
             return LyricsWordParser.parseKPOE(data, expectedDuration: duration > 0 ? duration : nil)
         } catch {
+            NSLog("Niche could not reach lyricsplus: %@", String(describing: error))
             return nil
         }
     }

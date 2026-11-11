@@ -1,7 +1,6 @@
 import Foundation
 
 enum YouTubeMusicClient {
-    static let agent = "Niche/\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0")"
     private static let searchURL = URL(string: "https://music.youtube.com/youtubei/v1/search?prettyPrint=false")!
     private static let nextURL = URL(string: "https://music.youtube.com/youtubei/v1/next?prettyPrint=false")!
     private static let browseURL = URL(string: "https://music.youtube.com/youtubei/v1/browse?prettyPrint=false")!
@@ -62,7 +61,7 @@ enum YouTubeMusicClient {
 
     private static func fetchTimedLyrics(browseId: String) async -> [LyricLine]? {
         let iosCtx: [String: Any] = ["client": ["clientName": "IOS_MUSIC", "clientVersion": "7.01.05"]]
-        let headers = ["X-YouTube-Client-Name": "26", "X-YouTube-Client-Version": "7.01.05", "User-Agent": agent]
+        let headers = ["X-YouTube-Client-Name": "26", "X-YouTube-Client-Version": "7.01.05", "User-Agent": LyricsService.agent]
         guard let json = await postJSON(url: browseURL, body: ["context": iosCtx, "browseId": browseId], headers: headers),
               let timedData = find(in: json, match: { ($0["timedLyricsData"] as? [[String: Any]]).flatMap { $0.isEmpty ? nil : $0 } }) else {
             return nil
@@ -108,12 +107,15 @@ enum YouTubeMusicClient {
             let (data, resp) = try await URLSession.shared.data(for: req)
             guard (resp as? HTTPURLResponse)?.statusCode == 200 else { return nil }
             return try JSONSerialization.jsonObject(with: data) as? [String: Any]
-        } catch { return nil }
+        } catch {
+            NSLog("Niche could not reach youtube music: %@", String(describing: error))
+            return nil
+        }
     }
 
     private static func webContext() -> [String: Any] { ["client": ["clientName": "WEB_REMIX", "clientVersion": "1.20260213.01.00"]] }
     private static func webHeaders() -> [String: String] {
-        ["X-YouTube-Client-Name": "67", "X-YouTube-Client-Version": "1.20260213.01.00", "Origin": "https://music.youtube.com", "User-Agent": agent]
+        ["X-YouTube-Client-Name": "67", "X-YouTube-Client-Version": "1.20260213.01.00", "Origin": "https://music.youtube.com", "User-Agent": LyricsService.agent]
     }
 
     private static func columnRuns(_ col: [String: Any]) -> [String] {

@@ -1,8 +1,6 @@
 import Foundation
 
 enum UnisonClient {
-    private static let agent = "Niche/\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0")"
-
     static func fetch(title: String, artist: String, duration: Double) async -> [LyricLine]? {
         let clean = LyricsNormalization.cleanTitle(title)
         let primaryArtist = LyricsNormalization.artistVariants(artist).first ?? artist
@@ -19,7 +17,7 @@ enum UnisonClient {
         guard let url = comp.url else { return nil }
 
         var req = URLRequest(url: url, timeoutInterval: 4)
-        req.setValue(agent, forHTTPHeaderField: "User-Agent")
+        req.setValue(LyricsService.agent, forHTTPHeaderField: "User-Agent")
 
         do {
             let (data, resp) = try await URLSession.shared.data(for: req)
@@ -38,6 +36,7 @@ enum UnisonClient {
                 return LyricsParser.parseLRC(lyricsStr)
             }
         } catch {
+            NSLog("Niche could not reach unison: %@", String(describing: error))
             return nil
         }
     }

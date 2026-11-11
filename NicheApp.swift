@@ -93,7 +93,7 @@ final class LabState {
         self.showOmp = defaults.bool(forKey: "showOmp")
         self.showLockIndicator = defaults.bool(forKey: "showLockIndicator")
         self.hideInFullscreen = defaults.bool(forKey: "hideInFullscreen")
-        self.notchStyle = defaults.string(forKey: "notchStyle").flatMap(NotchStyle.init(rawValue:)) ?? .island
+        self.notchStyle = NotchStyle(rawValue: defaults.string(forKey: "notchStyle")!)!
         Self.style = notchStyle
         player.spectrum.isEnabled = liveVisualizer
         applyAgentSettings()
@@ -607,7 +607,7 @@ struct NicheView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .animation(closedResize, value: lab.hasClosedContent)
-        .animation(.spring(response: 0.45, dampingFraction: 0.95), value: lab.closedLyricsHeight)
+        .animation(.settle, value: lab.closedLyricsHeight)
     }
 
     private var closedResize: Animation {

@@ -32,10 +32,9 @@ final class MusicPlayer {
     private(set) var position: Double = 0
     private(set) var songChangeToken = 0
     var currentPosition: Double {
-        guard let track, isPlaying else { return position }
-        let live = (CACurrentMediaTime() - baseMonotonic) * rate
-        let raw = max(elapsedAtTimestamp + live, 0)
-        return track.duration > 0 ? min(raw, track.duration) : raw
+        guard let track else { return position }
+        let live = isPlaying ? (CACurrentMediaTime() - baseMonotonic) * rate : 0
+        return min(max(elapsedAtTimestamp + live, 0), track.duration)
     }
     var allowsAnyApp: Bool {
         didSet {
@@ -97,7 +96,6 @@ final class MusicPlayer {
             self.lyrics.updateTransport(self.output.transportType)
         }
         lyrics.updateTransport(output.transportType)
-        lyrics.positionProvider = { [weak self] in self?.currentPosition ?? 0 }
     }
 
     func start() {
@@ -160,9 +158,7 @@ final class MusicPlayer {
             baseMonotonic = CACurrentMediaTime()
         } else if snapshot.isPlaying {
             let age = max(0, Date().timeIntervalSince(snapshot.timestamp))
-            let effectiveRate = snapshot.rate > 0 ? snapshot.rate : 1.0
-            let extrapolated = snapshot.elapsed + age * effectiveRate
-            elapsedAtTimestamp = next.duration > 0 ? min(extrapolated, next.duration) : extrapolated
+            elapsedAtTimestamp = min(snapshot.elapsed + age * snapshot.rate, next.duration)
             baseMonotonic = CACurrentMediaTime()
         } else {
             elapsedAtTimestamp = snapshot.elapsed
@@ -199,11 +195,10 @@ final class MusicPlayer {
     }
 
     func tick() {
-        guard let track else { return }
-        let live = isPlaying ? (CACurrentMediaTime() - baseMonotonic) * rate : 0
-        let next = min(max(elapsedAtTimestamp + live, 0), track.duration)
+        guard track != nil else { return }
+        let next = currentPosition
         if next != position { position = next }
-        if isShowingLyrics { lyrics.sync(currentPosition) }
+        if isShowingLyrics { lyrics.sync(next) }
     }
 
     private func followLyrics() {
@@ -904,21 +899,16 @@ struct MusicClosedView: View {
     }
 
     private func lyric(_ line: String) -> some View {
-        let primaryID = "\(player.lyrics.activeLine?.id ?? -1):\(line)"
-        let frameHeight = ClosedLyricsLayout.lyricFrameHeight(for: lab.closedLyricsMetrics)
+        let metrics = lab.closedLyricsMetrics
+        let frameHeight = ClosedLyricsLayout.lyricFrameHeight(for: metrics)
         return ZStack {
-            ClosedKaraokeLyricsView(
-                player: player,
-                line: line,
-                activeLine: player.lyrics.activeLine
-            )
-            .id(primaryID)
-            .transition(.blurReplace(.downUp))
+            ClosedLyric(player: player, text: line, twoRows: metrics.isTwoLines)
+                .id("\(String(describing: player.lyrics.activeLine?.id)):\(line)")
+                .transition(.blurReplace(.downUp))
         }
-        .animation(.spring(response: 0.25, dampingFraction: 0.90), value: primaryID)
         .frame(maxWidth: .infinity, alignment: .center)
         .frame(height: frameHeight)
         .clipped()
-        .animation(.spring(response: 0.45, dampingFraction: 0.95), value: frameHeight)
+        .animation(.settle, value: frameHeight)
     }
 }

@@ -1,8 +1,6 @@
 import Foundation
 
 enum QQMusicClient {
-    private static let agent = "Niche/\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0")"
-
     static func fetch(title: String, artist: String, duration: Double) async -> [LyricLine]? {
         let isQueryCJK = LyricsNormalization.hasCJK(title) || LyricsNormalization.hasCJK(artist)
         let query = "\(title) \(artist)"
@@ -14,7 +12,7 @@ enum QQMusicClient {
         guard let url = comp.url else { return nil }
 
         var req = URLRequest(url: url, timeoutInterval: 4)
-        req.setValue(agent, forHTTPHeaderField: "User-Agent")
+        req.setValue(LyricsService.agent, forHTTPHeaderField: "User-Agent")
         req.setValue("https://y.qq.com/", forHTTPHeaderField: "Referer")
 
         do {
@@ -33,7 +31,7 @@ enum QQMusicClient {
             ]
             guard let detailUrl = dComp.url else { return nil }
             var detailReq = URLRequest(url: detailUrl, timeoutInterval: 4)
-            detailReq.setValue(agent, forHTTPHeaderField: "User-Agent")
+            detailReq.setValue(LyricsService.agent, forHTTPHeaderField: "User-Agent")
             detailReq.setValue("https://y.qq.com/", forHTTPHeaderField: "Referer")
 
             let (dData, _) = try await URLSession.shared.data(for: detailReq)
@@ -60,7 +58,7 @@ enum QQMusicClient {
             guard let lyricUrl = lComp.url else { return nil }
 
             var lyricReq = URLRequest(url: lyricUrl, timeoutInterval: 4)
-            lyricReq.setValue(agent, forHTTPHeaderField: "User-Agent")
+            lyricReq.setValue(LyricsService.agent, forHTTPHeaderField: "User-Agent")
             lyricReq.setValue("https://y.qq.com/", forHTTPHeaderField: "Referer")
 
             let (lData, _) = try await URLSession.shared.data(for: lyricReq)
@@ -77,14 +75,13 @@ enum QQMusicClient {
             let lines = LyricsParser.parseLRC(lyricRaw)
             return lines.isEmpty ? nil : lines
         } catch {
+            NSLog("Niche could not reach qq music: %@", String(describing: error))
             return nil
         }
     }
 }
 
 enum KugouClient {
-    private static let agent = "Niche/\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0")"
-
     static func fetch(title: String, artist: String, duration: Double) async -> [LyricLine]? {
         let isQueryCJK = LyricsNormalization.hasCJK(title) || LyricsNormalization.hasCJK(artist)
         let query = "\(title) \(artist)"
@@ -97,7 +94,7 @@ enum KugouClient {
         guard let url = comp.url else { return nil }
 
         var req = URLRequest(url: url, timeoutInterval: 4)
-        req.setValue(agent, forHTTPHeaderField: "User-Agent")
+        req.setValue(LyricsService.agent, forHTTPHeaderField: "User-Agent")
 
         do {
             let (data, _) = try await URLSession.shared.data(for: req)
@@ -125,7 +122,7 @@ enum KugouClient {
             guard let krcUrl = kComp.url else { return nil }
 
             var krcReq = URLRequest(url: krcUrl, timeoutInterval: 4)
-            krcReq.setValue(agent, forHTTPHeaderField: "User-Agent")
+            krcReq.setValue(LyricsService.agent, forHTTPHeaderField: "User-Agent")
             let (kData, _) = try await URLSession.shared.data(for: krcReq)
             guard let kJson = try JSONSerialization.jsonObject(with: kData) as? [String: Any],
                   let candidates = kJson["candidates"] as? [[String: Any]],
@@ -143,7 +140,7 @@ enum KugouClient {
             guard let dlUrl = dlComp.url else { return nil }
 
             var dlReq = URLRequest(url: dlUrl, timeoutInterval: 4)
-            dlReq.setValue(agent, forHTTPHeaderField: "User-Agent")
+            dlReq.setValue(LyricsService.agent, forHTTPHeaderField: "User-Agent")
             let (dlData, _) = try await URLSession.shared.data(for: dlReq)
             guard let dlJson = try JSONSerialization.jsonObject(with: dlData) as? [String: Any],
                   let b64 = dlJson["content"] as? String, b64.count < 1_000_000,
@@ -154,6 +151,7 @@ enum KugouClient {
             let lines = LyricsParser.parseLRC(lrcText)
             return lines.isEmpty ? nil : lines
         } catch {
+            NSLog("Niche could not reach kugou: %@", String(describing: error))
             return nil
         }
     }

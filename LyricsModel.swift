@@ -12,10 +12,6 @@ struct LyricLine: Identifiable, Equatable, Sendable, Codable {
 }
 
 enum LyricsParser {
-    private static let creditPatterns = [
-        "作词", "作曲", "编曲", "制作人", "监制", "录音", "混音", "母带",
-        "written by", "lyrics by", "composed by", "produced by", "arranged by"
-    ]
     static func parseLRC(_ lrc: String) -> [LyricLine] {
         var stamps: [(time: Double, text: String)] = []
         var offset = 0.0
@@ -37,7 +33,7 @@ enum LyricsParser {
                 rest = rest[rest.index(after: close)...]
             }
             let text = rest.replacing(#/<\d+:\d+([.:]\d+)?>/#, with: "").trimmingCharacters(in: .whitespaces)
-            if !text.isEmpty, !isCreditLine(text, times: times), !LyricsWordParser.isMetadataOrJunkLine(text) {
+            if !text.isEmpty, !LyricsWordParser.isMetadataOrJunkLine(text) {
                 stamps += times.map { ($0, text) }
             }
         }
@@ -63,11 +59,5 @@ enum LyricsParser {
             .filter { !$0.isEmpty }
             .enumerated()
             .map { LyricLine(id: $0.offset, time: 0, end: 0, text: $0.element, charTimings: []) }
-    }
-
-    private static func isCreditLine(_ text: String, times: [Double]) -> Bool {
-        guard let firstTime = times.first, firstTime <= 3.0 else { return false }
-        let lower = text.lowercased()
-        return creditPatterns.contains { lower.contains($0) }
     }
 }

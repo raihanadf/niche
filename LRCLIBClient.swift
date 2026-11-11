@@ -1,8 +1,6 @@
 import Foundation
 
 enum LRCLIBClient {
-    private static let agent = "Niche/\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0") (https://github.com/raihanadf/niche)"
-
     static func fetch(title: String, artist: String, album: String? = nil, duration: Double) async -> [LyricLine]? {
         let cleanTitle = LyricsNormalization.cleanTitle(title)
         let artists = LyricsNormalization.artistVariants(artist)
@@ -47,12 +45,13 @@ enum LRCLIBClient {
         comp.queryItems = params.map { URLQueryItem(name: $0.key, value: $0.value) }
         guard let url = comp.url else { return nil }
         var request = URLRequest(url: url, timeoutInterval: 4)
-        request.setValue(agent, forHTTPHeaderField: "User-Agent")
+        request.setValue(LyricsService.agent, forHTTPHeaderField: "User-Agent")
         do {
             let (data, response) = try await URLSession.shared.data(for: request)
             guard (response as? HTTPURLResponse)?.statusCode == 200 else { return nil }
             return try JSONSerialization.jsonObject(with: data) as? [[String: Any]]
         } catch {
+            NSLog("Niche could not reach lrclib: %@", String(describing: error))
             return nil
         }
     }

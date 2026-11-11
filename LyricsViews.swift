@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct LyricsView: View {
@@ -52,13 +53,13 @@ struct LyricsView: View {
                     rows(plan: plan, allLines: lines, active: active, secondary: secondary, synced: synced)
                         .id("\(player.songChangeToken)-\(player.lyrics.loadToken)")
                         .offset(y: plan.offsetY)
-                        .animation(.spring(response: 0.45, dampingFraction: 0.78), value: focusKey)
+                        .animation(.arrive, value: focusKey)
                         .frame(height: Self.height, alignment: .top)
                 }
             }
         }
-        .transition(.opacity)
-        .animation(.easeOut(duration: 0.28), value: player.lyrics.state)
+        .transition(.blurReplace)
+        .animation(.fadeIn, value: player.lyrics.state)
         .frame(height: Self.height)
         .clipped()
         .mask(Self.mask)
@@ -180,10 +181,10 @@ private struct LyricRow: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .animation(.spring(response: 0.4, dampingFraction: 0.78), value: role)
-        .animation(.spring(response: 0.4, dampingFraction: 0.78), value: isTrailing)
-        .animation(.spring(response: 0.4, dampingFraction: 0.78), value: distance)
-        .onHover { inside in withAnimation(.easeOut(duration: 0.16)) { isHovered = inside } }
+        .animation(.arrive, value: role)
+        .animation(.arrive, value: isTrailing)
+        .animation(.arrive, value: distance)
+        .onHover { inside in withAnimation(.hover) { isHovered = inside } }
     }
 
     private var style: (size: CGFloat, weight: Font.Weight, opacity: Double) {
@@ -195,5 +196,209 @@ private struct LyricRow: View {
         case .backgroundActive: (12.5, .semibold, 0.84)
         case .inactive: (isBackground ? 11.5 : 13.0, .medium, isHovered ? 0.85 : [0.55, 0.42, 0.2, 0.08][min(distance, 3)] * bgAlpha)
         }
+    }
+}
+
+struct ClosedLyric: NSViewRepresentable {
+    let player: MusicPlayer
+    let text: String
+    let twoRows: Bool
+
+    func makeNSView(context: Context) -> KaraokeView { KaraokeView() }
+
+    func updateNSView(_ view: KaraokeView, context: Context) {
+        let lyrics = player.lyrics
+        let timings = lyrics.activeLine.flatMap { $0.text == text ? $0.charTimings : nil }
+        view.update(text: text, timings: timings, twoRows: twoRows,
+                    time: player.currentPosition + lyrics.lead, isPlaying: player.isPlaying)
+    }
+}
+
+final class KaraokeView: NSView {
+    private struct Row {
+        let band: CGRect
+        let keys: [(time: Double, x: CGFloat)]
+    }
+
+    private static let soft: CGFloat = 10
+    private let dim = CALayer()
+    private let lit = CALayer()
+    private let sweep = CALayer()
+    private var text = ""
+    private var timings: [Double]?
+    private var twoRows = false
+    private var time = 0.0
+    private var isPlaying = false
+    private var rows: [Row] = []
+
+    init() {
+        super.init(frame: .zero)
+        wantsLayer = true
+        dim.opacity = 0.3
+        layer!.addSublayer(dim)
+        layer!.addSublayer(lit)
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+
+    func update(text: String, timings: [Double]?, twoRows: Bool, time: Double, isPlaying: Bool) {
+        let timings = timings.flatMap { $0.count == text.count ? $0 : nil }
+        let changed = text != self.text || timings != self.timings || twoRows != self.twoRows
+        self.text = text
+        self.timings = timings
+        self.twoRows = twoRows
+        self.time = time
+        self.isPlaying = isPlaying
+        if changed { render() }
+        animate()
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        render()
+        animate()
+    }
+
+    override func viewDidChangeBackingProperties() {
+        super.viewDidChangeBackingProperties()
+        render()
+        animate()
+    }
+
+    override func setFrameSize(_ newSize: NSSize) {
+        let resized = newSize != frame.size
+        super.setFrameSize(newSize)
+        guard resized else { return }
+        render()
+        animate()
+    }
+
+    private func render() {
+        guard let window, bounds.width > 0, bounds.height > 0, !text.isEmpty else { return }
+        let maxRows = twoRows ? 2 : 1
+        var size: CGFloat = 11.5
+        var font = Lyrics.closedFont
+        var lines: [(line: CTLine, range: CFRange)] = []
+        repeat {
+            font = NSFont(descriptor: Lyrics.closedFont.fontDescriptor, size: size)!
+            let string = NSAttributedString(string: text, attributes: [.font: font, .foregroundColor: NSColor.white])
+            let setter = CTTypesetterCreateWithAttributedString(string)
+            lines = []
+            var start = 0
+            while start < string.length {
+                let count = twoRows ? max(1, CTTypesetterSuggestLineBreak(setter, start, Double(bounds.width))) : string.length
+                let range = CFRange(location: start, length: count)
+                lines.append((CTTypesetterCreateLine(setter, range), range))
+                start += count
+            }
+            size -= 0.25
+        } while size >= 11.5 * 0.7 && (lines.count > maxRows || lines.contains { Self.width(of: $0.line) > bounds.width })
+
+        let scale = window.backingScaleFactor
+        let lineHeight = ceil(font.ascender - font.descender + font.leading)
+        let shown = lines.prefix(maxRows)
+        let top = (bounds.height + lineHeight * CGFloat(shown.count)) / 2
+        let context = CGContext(data: nil, width: Int(ceil(bounds.width * scale)), height: Int(ceil(bounds.height * scale)), bitsPerComponent: 8,
+                                bytesPerRow: 0, space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        context.scaleBy(x: scale, y: scale)
+        let utf16 = text.utf16
+        let starts = text.indices.map { utf16.distance(from: utf16.startIndex, to: $0.samePosition(in: utf16)!) }
+        rows = []
+        for (index, entry) in shown.enumerated() {
+            let width = Self.width(of: entry.line)
+            let originX = ((bounds.width - width) / 2).rounded()
+            let bandY = top - lineHeight * CGFloat(index + 1)
+            context.textPosition = CGPoint(x: originX, y: bandY - font.descender)
+            CTLineDraw(entry.line, context)
+            guard let timings else { continue }
+            let end = entry.range.location + entry.range.length
+            var keys: [(time: Double, x: CGFloat)] = []
+            for (char, start) in starts.enumerated() where start >= entry.range.location && start < end {
+                let next = char + 1 < starts.count ? starts[char + 1] : utf16.count
+                let left = CTLineGetOffsetForStringIndex(entry.line, start, nil)
+                let right = CTLineGetOffsetForStringIndex(entry.line, min(next, end), nil)
+                if keys.isEmpty { keys.append((timings[char] - 0.16, originX + left - Self.soft / 2)) }
+                keys.append((timings[char] - 0.08, originX + (left + right) / 2))
+            }
+            guard let last = keys.last else { continue }
+            keys.append((last.time + 0.08, originX + width + Self.soft / 2))
+            rows.append(Row(band: CGRect(x: 0, y: bandY, width: bounds.width, height: lineHeight), keys: keys))
+        }
+        let image = context.makeImage()
+
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        for layer in [dim, lit] {
+            layer.frame = bounds
+            layer.contentsScale = scale
+            layer.contents = image
+        }
+        dim.isHidden = timings == nil
+        sweep.frame = bounds
+        sweep.sublayers = rows.map { row in
+            let edge = CAGradientLayer()
+            edge.startPoint = CGPoint(x: 0, y: 0.5)
+            edge.endPoint = CGPoint(x: 1, y: 0.5)
+            edge.colors = [NSColor.white.cgColor, NSColor.white.cgColor, NSColor.clear.cgColor]
+            edge.locations = [0, NSNumber(value: Double(bounds.width / (bounds.width + Self.soft))), 1]
+            edge.bounds = CGRect(x: 0, y: 0, width: bounds.width + Self.soft, height: row.band.height)
+            edge.position = CGPoint(x: row.keys[0].x - bounds.width / 2, y: row.band.midY)
+            return edge
+        }
+        lit.mask = timings == nil ? nil : sweep
+        CATransaction.commit()
+    }
+
+    private func animate() {
+        if text == "♪" {
+            lit.opacity = isPlaying ? 1 : 0.55
+            guard isPlaying else {
+                lit.removeAnimation(forKey: "pulse")
+                return
+            }
+            guard lit.animation(forKey: "pulse") == nil else { return }
+            let pulse = CABasicAnimation(keyPath: "opacity")
+            pulse.fromValue = 0.85
+            pulse.toValue = 0.4
+            pulse.duration = 0.7
+            pulse.autoreverses = true
+            pulse.repeatCount = .infinity
+            pulse.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            lit.add(pulse, forKey: "pulse")
+            return
+        }
+        lit.removeAnimation(forKey: "pulse")
+        lit.opacity = 1
+        guard let edges = sweep.sublayers, edges.count == rows.count else { return }
+        let now = CACurrentMediaTime()
+        for (edge, row) in zip(edges, rows) {
+            edge.removeAnimation(forKey: "sweep")
+            let first = row.keys[0].time
+            let span = max(row.keys[row.keys.count - 1].time - first, 0.01)
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            edge.position.x = Self.edge(in: row.keys, at: time) - bounds.width / 2
+            CATransaction.commit()
+            guard isPlaying, time < first + span else { continue }
+            let move = CAKeyframeAnimation(keyPath: "position.x")
+            move.values = row.keys.map { $0.x - bounds.width / 2 }
+            move.keyTimes = row.keys.map { NSNumber(value: ($0.time - first) / span) }
+            move.duration = span
+            move.beginTime = edge.convertTime(now, from: nil) + first - time
+            move.fillMode = .both
+            move.isRemovedOnCompletion = false
+            edge.add(move, forKey: "sweep")
+        }
+    }
+
+    private static func width(of line: CTLine) -> CGFloat {
+        CGFloat(CTLineGetTypographicBounds(line, nil, nil, nil) - CTLineGetTrailingWhitespaceWidth(line))
+    }
+
+    private static func edge(in keys: [(time: Double, x: CGFloat)], at time: Double) -> CGFloat {
+        guard let after = keys.firstIndex(where: { $0.time > time }) else { return keys[keys.count - 1].x }
+        guard after > 0 else { return keys[0].x }
+        let a = keys[after - 1], b = keys[after]
+        return a.x + (b.x - a.x) * CGFloat((time - a.time) / (b.time - a.time))
     }
 }

@@ -43,7 +43,7 @@ enum LyricsWordParser {
         guard duration > 0 else { return !lines.isEmpty }
         guard !lines.isEmpty else { return false }
         if duration > 30.0, lines.count < 2 { return false }
-        let lastEnd = lines.map(\.end).max() ?? 0
+        let lastEnd = lines.map(\.end).max()!
         guard lastEnd > 0 else { return false }
         if lastEnd > duration + 6.0 { return false }
         return lastEnd >= (duration * 0.70) || abs(lastEnd - duration) <= 8.0

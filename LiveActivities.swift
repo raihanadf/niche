@@ -232,14 +232,11 @@ final class LiveActivityCenter {
     private var needsKeyTap: Bool { watching(.brightness) || (replacesSystemHUD && watching(.volume)) }
 
     private func startKeyTap() {
-        let trusted: Bool
-        if didPromptAccessibility {
-            trusted = AXIsProcessTrusted()
-        } else {
+        if !didPromptAccessibility {
             didPromptAccessibility = true
-            trusted = AXIsProcessTrustedWithOptions([kAXTrustedCheckOptionPrompt.takeUnretainedValue(): true] as CFDictionary)
+            requestAccessibility()
         }
-        guard trusted else {
+        guard AXIsProcessTrusted() else {
             keyTapRetry?.cancel()
             keyTapRetry = Task { [weak self] in
                 try? await Task.sleep(for: .seconds(3))

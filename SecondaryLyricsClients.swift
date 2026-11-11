@@ -18,6 +18,7 @@ private func fetchJSON(_ url: URL, cookies: Bool = true, configure: ((inout URLR
         guard !Task.isCancelled, (resp as? HTTPURLResponse)?.statusCode == 200 else { return nil }
         return try JSONSerialization.jsonObject(with: data) as? [String: Any]
     } catch {
+        NSLog("Niche could not reach %@: %@", url.absoluteString, String(describing: error))
         return nil
     }
 }

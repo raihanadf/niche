@@ -3,32 +3,27 @@ import Foundation
 
 struct CachedLyrics: Codable, Sendable {
     let version: Int, lines: [LyricLine], synced: Bool, savedAt: Date
-    init(version: Int = 4, lines: [LyricLine], synced: Bool, savedAt: Date) {
-        self.version = version; self.lines = lines; self.synced = synced; self.savedAt = savedAt
-    }
 }
 
 actor LyricsCache {
     static let shared = LyricsCache()
 
-    private let maxMemoryEntries: Int, maxDiskBytes: Int64, targetDiskBytes: Int64, maxAge: TimeInterval
+    private let maxMemoryEntries = 20
+    private let maxDiskBytes: Int64 = 30 * 1024 * 1024
+    private let targetDiskBytes: Int64 = 20 * 1024 * 1024
+    private let maxAge: TimeInterval = 60 * 86_400
 
     private var memoryCache: [String: CachedLyrics] = [:]
     private var memoryOrder: [String] = []
-    private let fm: FileManager
-    private let folderURL: URL
+    private let fm = FileManager()
+    private let folderURL = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+        .appendingPathComponent("local.niche/Lyrics", isDirectory: true)
 
-    init(folderURL: URL? = nil, maxMemoryEntries: Int = 20, maxDiskBytes: Int64 = 30 * 1024 * 1024,
-         targetDiskBytes: Int64 = 20 * 1024 * 1024, maxAge: TimeInterval = 60 * 86_400) {
-        let manager = FileManager()
-        let base = folderURL ?? manager.urls(for: .cachesDirectory, in: .userDomainMask).first!
-            .appendingPathComponent("local.niche/Lyrics", isDirectory: true)
-        self.fm = manager; self.folderURL = base; self.maxMemoryEntries = maxMemoryEntries
-        self.maxDiskBytes = maxDiskBytes; self.targetDiskBytes = targetDiskBytes; self.maxAge = maxAge
-        try? fm.createDirectory(at: self.folderURL, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+    init() {
+        try? fm.createDirectory(at: folderURL, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
     }
 
-    func get(artist: String, title: String, album: String = "", duration: Double = 0) async -> (lines: [LyricLine], synced: Bool)? {
+    func get(artist: String, title: String, album: String, duration: Double) -> (lines: [LyricLine], synced: Bool)? {
         let key = cacheKey(artist: artist, title: title, album: album, duration: duration)
         let now = Date()
 
@@ -62,7 +57,7 @@ actor LyricsCache {
         return (item.lines, item.synced)
     }
 
-    func set(artist: String, title: String, album: String = "", duration: Double = 0, lines: [LyricLine], synced: Bool) async {
+    func set(artist: String, title: String, album: String, duration: Double, lines: [LyricLine], synced: Bool) {
         guard !lines.isEmpty, lines.contains(where: { !LyricsWordParser.isMetadataOrJunkLine($0.text) }) else { return }
         let key = cacheKey(artist: artist, title: title, album: album, duration: duration)
         let item = CachedLyrics(version: 4, lines: lines, synced: synced, savedAt: Date())

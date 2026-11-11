@@ -12,32 +12,19 @@ final class Lyrics {
     private(set) var secondaryIndex: Int?
     private(set) var isSinging = false
     private(set) var loadToken: Int = 0
-    private(set) var offset: Double = 0.0
     private(set) var hardwareLead: Double = 0.08
     let displayLead: Double = 0.28
     let sweepLead: Double = 0.08
     var lead: Double { hardwareLead + sweepLead }
-    @ObservationIgnored var positionProvider: (() -> Double)?
     @ObservationIgnored private var key = ""
     @ObservationIgnored private var task: Task<Void, Never>?
     @ObservationIgnored private var measured = (text: "", width: CGFloat(0))
 
-    private static let userOffsetsKey = "lyrics_user_offsets"
-    private static let resize = Animation.spring(response: 0.45, dampingFraction: 0.95)
-    static let closedFont = closedNSFont()
-
-    static func closedNSFont(size: CGFloat = 11.5) -> NSFont {
-        let base = NSFont.systemFont(ofSize: size, weight: .semibold)
-        return base.fontDescriptor.withDesign(.rounded).flatMap { NSFont(descriptor: $0, size: size) } ?? base
-    }
-
-    init() {
-        Self.purgeLegacyOffsets()
-    }
+    static let closedFont = NSFont(descriptor: NSFont.systemFont(ofSize: 11.5, weight: .semibold).fontDescriptor.withDesign(.rounded)!, size: 11.5)!
 
     var line: String {
         guard case .loaded(let lines, let synced) = state, !lines.isEmpty else { return "" }
-        guard synced else { return lines.first?.text ?? "" }
+        guard synced else { return lines[0].text }
         guard let index, isSinging, index < lines.count, !lines[index].text.isEmpty else { return "♪" }
         return lines[index].text
     }
@@ -78,17 +65,11 @@ final class Lyrics {
         }
     }
 
-    func adjustOffset(by delta: Double) {
-        offset = min(max(offset + delta, -5.0), 5.0)
-        saveUserOffset(offset)
-    }
-
     func load(_ track: Track?) {
         guard let track else {
             task?.cancel()
             key = ""
-            offset = 0.0
-            withAnimation(Self.resize) {
+            withAnimation(.settle) {
                 state = .idle
                 index = nil
                 secondaryIndex = nil
@@ -100,7 +81,6 @@ final class Lyrics {
         let key = "\(track.artist)|\(track.title)|\(track.album)".lowercased()
         guard key != self.key else { return }
         self.key = key
-        self.offset = loadUserOffset(for: key)
         task?.cancel()
         task = Task { [weak self] in
             var cachedHasWordTimings = false
@@ -111,7 +91,7 @@ final class Lyrics {
                 if cachedHasWordTimings { return }
             } else {
                 guard !Task.isCancelled, let self, self.key == key else { return }
-                withAnimation(Self.resize) {
+                withAnimation(.settle) {
                     self.index = nil
                     self.secondaryIndex = nil
                     self.isSinging = false
@@ -135,7 +115,7 @@ final class Lyrics {
                     self.commitLoaded(lines, synced: synced)
                 }
             } else if self.state == .loading {
-                withAnimation(Self.resize) {
+                withAnimation(.settle) {
                     self.index = nil
                     self.secondaryIndex = nil
                     self.isSinging = false
@@ -146,24 +126,21 @@ final class Lyrics {
     }
 
     private func commitLoaded(_ lines: [LyricLine], synced: Bool) {
-        withAnimation(Self.resize) {
+        withAnimation(.settle) {
             index = nil
             secondaryIndex = nil
             isSinging = false
             state = .loaded(lines, synced: synced)
             loadToken &+= 1
         }
-        if synced, let pos = positionProvider?() {
-            sync(pos)
-        }
     }
 
     func sync(_ position: Double) {
         guard case .loaded(let lines, synced: true) = state, !lines.isEmpty else { return }
-        let audioAt = position + hardwareLead + offset
+        let audioAt = position + hardwareLead
         let (next, nextSecondary, singing) = Self.resolveLines(lines: lines, audioAt: audioAt, displayLead: displayLead)
         guard next != index || nextSecondary != secondaryIndex || singing != isSinging else { return }
-        withAnimation(Self.resize) {
+        withAnimation(.settle) {
             index = next
             secondaryIndex = nextSecondary
             isSinging = singing
@@ -217,32 +194,8 @@ final class Lyrics {
             }
             return (audioAt < nextTime - displayLead ? prevIdx : nextIdx, nil, true)
         }
-        let lastIdx = lines.indices.max { a, b in (lines[a].end, a) < (lines[b].end, b) } ?? (lines.count - 1)
+        let lastIdx = lines.indices.max { a, b in (lines[a].end, a) < (lines[b].end, b) }!
         return (lastIdx, nil, audioAt < lines[lastIdx].end + 2.0)
-    }
-
-    private func loadUserOffset(for key: String) -> Double {
-        let all = UserDefaults.standard.dictionary(forKey: Self.userOffsetsKey) as? [String: Double]
-        return all?[key] ?? 0.0
-    }
-
-    private func saveUserOffset(_ val: Double) {
-        guard !key.isEmpty else { return }
-        var all = UserDefaults.standard.dictionary(forKey: Self.userOffsetsKey) as? [String: Double] ?? [:]
-        if abs(val) < 0.005 {
-            all.removeValue(forKey: key)
-        } else {
-            all[key] = val
-        }
-        UserDefaults.standard.set(all, forKey: Self.userOffsetsKey)
-    }
-
-    private static func purgeLegacyOffsets() {
-        let defaults = UserDefaults.standard
-        defaults.removeObject(forKey: "niche_device_latency_store")
-        let legacyKeys = defaults.dictionaryRepresentation().keys.filter { $0.hasPrefix("lyrics_offset_") }
-        guard !legacyKeys.isEmpty else { return }
-        for k in legacyKeys { defaults.removeObject(forKey: k) }
     }
 }
 
