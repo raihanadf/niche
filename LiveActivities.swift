@@ -77,6 +77,7 @@ final class LiveActivityCenter {
     @ObservationIgnored private let smoothBrightness: @convention(c) (UInt32, Float) -> Int32
     @ObservationIgnored private var keyTap: CFMachPort?
     @ObservationIgnored private var keyTapSource: CFRunLoopSource?
+    @ObservationIgnored private var keyTapRetry: Task<Void, Never>?
     @ObservationIgnored private var headphones: HeadphonesWatcher?
 
     nonisolated(unsafe) private static weak var shared: LiveActivityCenter?
@@ -162,6 +163,8 @@ final class LiveActivityCenter {
         lastVolume = nil
         isBluetoothOutput = false
         lastVolumeKeyAt = 0
+        keyTapRetry?.cancel()
+        keyTapRetry = nil
         if let keyTapSource {
             CFRunLoopRemoveSource(CFRunLoopGetMain(), keyTapSource, .commonModes)
             self.keyTapSource = nil
@@ -229,9 +232,10 @@ final class LiveActivityCenter {
 
     private func startKeyTap() {
         guard AXIsProcessTrusted() else {
-            Task { [weak self] in
+            keyTapRetry?.cancel()
+            keyTapRetry = Task { [weak self] in
                 try? await Task.sleep(for: .seconds(3))
-                guard let self, self.keyTap == nil, self.needsKeyTap else { return }
+                guard !Task.isCancelled, let self, self.keyTap == nil, self.needsKeyTap else { return }
                 self.startKeyTap()
             }
             return
